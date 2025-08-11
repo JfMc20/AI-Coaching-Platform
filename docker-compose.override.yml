@@ -1,0 +1,62 @@
+# Docker Compose override para desarrollo local
+# Este archivo se carga automáticamente junto con docker-compose.yml
+
+services:
+  # Configuraciones específicas para desarrollo
+  auth-service:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      # Mount código fuente para desarrollo en vivo
+      - ./services/auth-service:/app/services/auth-service:ro
+      - ./shared:/app/shared:ro
+    # Política de restart más permisiva para desarrollo
+    restart: "no"
+
+  creator-hub-service:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./services/creator-hub-service:/app/services/creator-hub-service:ro
+      - ./shared:/app/shared:ro
+    restart: "no"
+
+  ai-engine-service:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./services/ai-engine-service:/app/services/ai-engine-service:ro
+      - ./shared:/app/shared:ro
+    restart: "no"
+
+  channel-service:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./services/channel-service:/app/services/channel-service:ro
+      - ./shared:/app/shared:ro
+    restart: "no"
+
+  # Configuración de desarrollo para Nginx
+  nginx:
+    volumes:
+      # Permitir recarga de configuración sin rebuild
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: "no"
+
+  # Base de datos con configuración de desarrollo
+  postgres:
+    environment:
+      - POSTGRES_LOG_STATEMENT=all
+      - POSTGRES_LOG_MIN_DURATION_STATEMENT=0
+    # Mantener restart para servicios de infraestructura
+    restart: unless-stopped
+
+  redis:
+    # Configuración de Redis para desarrollo
+    command: redis-server --appendonly yes --loglevel verbose
+    restart: unless-stopped

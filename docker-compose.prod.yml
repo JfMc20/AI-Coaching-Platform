@@ -1,0 +1,173 @@
+# Docker Compose para producción
+# Uso: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  # Configuraciones de producción para servicios de aplicación
+  auth-service:
+    environment:
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    # Política de restart agresiva para producción
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  creator-hub-service:
+    environment:
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  ai-engine-service:
+    environment:
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 180s
+
+  channel-service:
+    environment:
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  # Nginx con configuración de producción
+  nginx:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    # Configuración adicional para producción
+    environment:
+      - NGINX_WORKER_PROCESSES=auto
+      - NGINX_WORKER_CONNECTIONS=1024
+
+  # Servicios de infraestructura con configuración de producción
+  postgres:
+    restart: always
+    environment:
+      # Configuración optimizada para producción
+      - POSTGRES_SHARED_PRELOAD_LIBRARIES=pg_stat_statements
+      - POSTGRES_MAX_CONNECTIONS=100
+      - POSTGRES_SHARED_BUFFERS=256MB
+      - POSTGRES_EFFECTIVE_CACHE_SIZE=1GB
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  redis:
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  ollama:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+
+  chromadb:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+# Configuración de red para producción
+networks:
+  mvp-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Configuración de volúmenes para producción
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/lib/docker/volumes/mvp_postgres_data
+  
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /var/lib/docker/volumes/mvp_redis_data

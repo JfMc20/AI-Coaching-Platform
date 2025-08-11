@@ -1,0 +1,34 @@
+[project]
+name = "mvp-coaching-ai-platform"
+description = "Multi-Channel Proactive Coaching Platform"
+requires-python = ">=3.11"
+dynamic = ["version"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "httpx>=0.25.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

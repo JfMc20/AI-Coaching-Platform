@@ -1,0 +1,62 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 23.9.1
+    hooks:
+      - id: black
+        language_version: python3.11
+        args: [--line-length=100]
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        args: [--profile=black, --line-length=100]
+
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.0.292
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.5.1
+    hooks:
+      - id: mypy
+        additional_dependencies: [types-all]
+        args: [--strict, --ignore-missing-imports]
+        exclude: ^(scripts/|tests/)
+
+  - repo: local
+    hooks:
+      - id: complexity-check
+        name: Complexity Check
+        entry: radon cc --min B --show-complexity
+        language: system
+        files: \.py$
+        exclude: ^(scripts/|tests/|migrations/)
+        
+      - id: maintainability-check
+        name: Maintainability Check  
+        entry: radon mi --min B
+        language: system
+        files: \.py$
+        exclude: ^(scripts/|tests/|migrations/)
+
+      - id: security-check
+        name: Security Check
+        entry: bandit -r . -ll
+        language: system
+        files: \.py$
+        exclude: ^(tests/|scripts/)
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: detect-private-key

@@ -1,0 +1,236 @@
+# YAML Anchors for common configurations
+x-common-variables: &common-variables
+  POSTGRES_DB: ${POSTGRES_DB:-mvp_coaching}
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+
+x-database-url: &database-url
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-mvp_coaching}
+
+x-service-defaults: &service-defaults
+  networks:
+    - mvp-network
+  restart: unless-stopped
+
+x-app-service-defaults: &app-service-defaults
+  <<: *service-defaults
+  depends_on:
+    - postgres
+    - redis
+
+x-build-defaults: &build-defaults
+  context: .
+  cache_from:
+    - python:3.11-slim
+  args:
+    BUILDKIT_INLINE_CACHE: 1
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 30s
+
+services:
+  # Database Services
+  postgres:
+    image: postgres:15-alpine
+    container_name: mvp-postgres
+    environment:
+      <<: *common-variables
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    <<: *service-defaults
+
+  redis:
+    image: redis:7-alpine
+    container_name: mvp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    <<: *service-defaults
+
+  # AI/ML Services
+  ollama:
+    image: ollama/ollama:0.1.17
+    container_name: mvp-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "pgrep ollama || exit 1"]
+    <<: *service-defaults
+
+  chromadb:
+    image: chromadb/chroma:0.4.15
+    container_name: mvp-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb_data:/chroma/chroma
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "test -f /proc/1/stat || exit 1"]
+    <<: *service-defaults
+
+  # Application Services
+  auth-service:
+    build:
+      <<: *build-defaults
+      dockerfile: ./services/auth-service/Dockerfile
+    container_name: mvp-auth-service
+    ports:
+      - "8001:8001"
+    environment:
+      <<: *database-url
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-30}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PORT: 8001
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5)"]
+    <<: *app-service-defaults
+
+  creator-hub-service:
+    build:
+      <<: *build-defaults
+      dockerfile: ./services/creator-hub-service/Dockerfile
+    container_name: mvp-creator-hub-service
+    ports:
+      - "8002:8002"
+    environment:
+      <<: *database-url
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8001}
+      AI_ENGINE_SERVICE_URL: ${AI_ENGINE_SERVICE_URL:-http://ai-engine-service:8003}
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-52428800}
+      UPLOADS_DIR: ${UPLOADS_DIR:-/app/uploads}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PORT: 8002
+    volumes:
+      - uploads_data:/app/uploads
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=5)"]
+    depends_on:
+      - postgres
+      - redis
+      - auth-service
+    <<: *service-defaults
+
+  ai-engine-service:
+    build:
+      <<: *build-defaults
+      dockerfile: ./services/ai-engine-service/Dockerfile
+    container_name: mvp-ai-engine-service
+    ports:
+      - "8003:8003"
+    environment:
+      <<: *database-url
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/2}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      CHROMADB_URL: ${CHROMADB_URL:-http://chromadb:8000}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      CHAT_MODEL: ${CHAT_MODEL:-llama2:7b-chat}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PORT: 8003
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health', timeout=5)"]
+    depends_on:
+      - postgres
+      - redis
+      - ollama
+      - chromadb
+    <<: *service-defaults
+
+  channel-service:
+    build:
+      <<: *build-defaults
+      dockerfile: ./services/channel-service/Dockerfile
+    container_name: mvp-channel-service
+    ports:
+      - "8004:8004"
+    environment:
+      <<: *database-url
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/3}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8001}
+      AI_ENGINE_SERVICE_URL: ${AI_ENGINE_SERVICE_URL:-http://ai-engine-service:8003}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PORT: 8004
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health', timeout=5)"]
+    depends_on:
+      - postgres
+      - redis
+      - auth-service
+      - ai-engine-service
+    <<: *service-defaults
+
+  # API Gateway
+  nginx:
+    image: nginx:alpine
+    container_name: mvp-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - auth-service
+      - creator-hub-service
+      - ai-engine-service
+      - channel-service
+    <<: *service-defaults
+
+volumes:
+  postgres_data:
+  redis_data:
+  ollama_data:
+  chromadb_data:
+  uploads_data:
+
+networks:
+  mvp-network:
+    driver: bridge
