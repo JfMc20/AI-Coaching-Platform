@@ -11,6 +11,8 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
+from shared.config.settings import get_database_url_with_validation
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -27,7 +29,7 @@ from shared.models.database import Base
 target_metadata = Base.metadata
 
 # Override sqlalchemy.url from environment variable if available
-database_url = os.getenv("DATABASE_URL")
+database_url = get_database_url_with_validation(async_url=False, required=False)
 if database_url:
     config.set_main_option("sqlalchemy.url", database_url)
 

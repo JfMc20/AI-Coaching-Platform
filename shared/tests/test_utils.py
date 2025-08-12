@@ -5,12 +5,11 @@ Tests for shared utilities
 import pytest
 from shared.utils.helpers import (
     generate_correlation_id, 
-    generate_secure_token, 
-    hash_password, 
-    verify_password,
+    generate_secure_token,
     generate_document_id,
     sanitize_filename
 )
+from shared.security.password_security import hash_password, verify_password
 from shared.utils.serializers import CustomJSONEncoder
 import json
 from datetime import datetime
@@ -51,20 +50,28 @@ class TestHelpers:
         assert len(short_token) > 10  # URL-safe encoding may vary length
     
     def test_password_hashing(self):
-        """Test password hashing and verification"""
+        """Test password hashing and verification using secure Argon2id implementation"""
         password = "SecurePassword123"
         
-        # Hash password
-        hashed = hash_password(password)
+        # Hash password using Argon2id (default)
+        hashed = hash_password(password, use_argon2=True)
         
         # Should not be the same as original
         assert hashed != password
+        
+        # Should start with Argon2id prefix
+        assert hashed.startswith("$argon2id$")
         
         # Should verify correctly
         assert verify_password(password, hashed) is True
         
         # Should not verify wrong password
         assert verify_password("WrongPassword", hashed) is False
+        
+        # Test bcrypt fallback compatibility
+        bcrypt_hash = hash_password(password, use_argon2=False)
+        assert bcrypt_hash.startswith("$2b$")
+        assert verify_password(password, bcrypt_hash) is True
     
     def test_generate_document_id(self):
         """Test document ID generation"""

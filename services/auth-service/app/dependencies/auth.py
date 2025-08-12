@@ -444,3 +444,21 @@ def get_password_reset_confirm_rate_limiter(
     return RateLimitChecker(
         redis_client=redis_client, max_attempts=5, window_seconds=15 * 60, namespace="password_reset_confirm"
     )
+
+
+async def get_client_info(request: Request) -> Dict[str, Any]:
+    """
+    Extract client information from request
+    
+    Args:
+        request: FastAPI request object
+        
+    Returns:
+        Dictionary with client information
+    """
+    return {
+        "client_ip": request.client.host if request.client else "unknown",
+        "user_agent": request.headers.get("User-Agent", "unknown"),
+        "forwarded_for": request.headers.get("X-Forwarded-For"),
+        "real_ip": request.headers.get("X-Real-IP")
+    }

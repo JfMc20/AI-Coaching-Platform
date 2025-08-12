@@ -3,12 +3,15 @@ AI Engine Service - MVP Coaching AI Platform
 Handles AI processing, RAG pipeline, and document processing
 """
 
-from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import os
 import logging
 from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from shared.config.settings import validate_service_environment
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,10 +27,7 @@ required_env_vars = [
     "CHAT_MODEL"
 ]
 
-missing_vars = [var for var in required_env_vars if not os.getenv(var)]
-if missing_vars:
-    logger.error(f"Missing required environment variables: {missing_vars}")
-    raise RuntimeError(f"Missing required environment variables: {missing_vars}")
+validate_service_environment(required_env_vars, logger)
 
 
 @asynccontextmanager

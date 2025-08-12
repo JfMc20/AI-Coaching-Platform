@@ -26,9 +26,8 @@ from shared.models.auth import (
     PasswordResetRequest, PasswordResetConfirm, TokenRefreshRequest,
     PasswordStrengthResponse
 )
-from shared.security import (
-    PasswordHasher, PasswordValidator, PasswordPolicy,
-    hash_password, verify_password, validate_password_strength
+from shared.security.password_security import (
+    PasswordHasher, PasswordValidator, validate_password_strength
 )
 
 logger = logging.getLogger(__name__)

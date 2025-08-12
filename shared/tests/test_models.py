@@ -7,6 +7,7 @@ from datetime import datetime
 from pydantic import ValidationError
 
 from shared.models.auth import CreatorCreate, CreatorResponse, TokenResponse, UserSession
+from shared.security.password_security import check_password_policy
 from shared.models.documents import ProcessingResult, DocumentChunk, ProcessingStatus
 from shared.models.widgets import WidgetConfig, WidgetTheme, WidgetBehavior
 from shared.models.conversations import Message, Conversation, MessageRole
@@ -19,37 +20,49 @@ class TestAuthModels:
         """Test valid creator creation"""
         creator = CreatorCreate(
             email="test@example.com",
-            password="SecurePass123",
+            password="SecurePass123!",  # Added special character to meet security requirements
             full_name="Test Creator",
             company_name="Test Company"
         )
         
         assert creator.email == "test@example.com"
-        assert creator.password == "SecurePass123"
+        assert creator.password == "SecurePass123!"
         assert creator.full_name == "Test Creator"
         assert creator.company_name == "Test Company"
     
     def test_creator_create_password_validation(self):
-        """Test password validation"""
-        # Test weak password
+        """Test password validation using unified security implementation"""
+        # Test weak password (meets length but fails security policy) - should be rejected
         with pytest.raises(ValidationError) as exc_info:
             CreatorCreate(
                 email="test@example.com",
-                password="weak",
+                password="weakpassword",  # 8+ chars but no uppercase, digits, or special chars
                 full_name="Test Creator"
             )
         
-        assert "Password must be at least 8 characters" in str(exc_info.value)
+        assert "does not meet security requirements" in str(exc_info.value)
         
-        # Test password without uppercase
+        # Test password without uppercase - should be rejected
         with pytest.raises(ValidationError) as exc_info:
             CreatorCreate(
                 email="test@example.com",
-                password="lowercase123",
+                password="lowercase123!",
                 full_name="Test Creator"
             )
         
-        assert "uppercase letter" in str(exc_info.value)
+        assert "does not meet security requirements" in str(exc_info.value)
+        
+        # Test strong password - should be accepted
+        creator = CreatorCreate(
+            email="test@example.com",
+            password="StrongPassword123!",
+            full_name="Test Creator"
+        )
+        assert creator.password == "StrongPassword123!"
+        
+        # Verify the underlying check_password_policy function works
+        assert check_password_policy("StrongPassword123!") is True
+        assert check_password_policy("weakpassword") is False
     
     def test_token_response(self):
         """Test token response model"""
@@ -70,13 +83,13 @@ class TestAuthModels:
             session_id="session_123",
             creator_id="creator_456",
             channel="web_widget",
-            metadata={"ip": "127.0.0.1"}
+            session_metadata={"ip": "127.0.0.1"}  # Correct field name is session_metadata
         )
         
         assert session.session_id == "session_123"
         assert session.creator_id == "creator_456"
         assert session.channel == "web_widget"
-        assert session.metadata["ip"] == "127.0.0.1"
+        assert session.session_metadata["ip"] == "127.0.0.1"
 
 
 class TestDocumentModels:

@@ -226,7 +226,10 @@ GET  /api/v1/ai-engine/conversations/{id}/context
   - Implementar POST /api/v1/auth/logout con invalidación de tokens
   - _Requerimientos: 3.1, 3.2, 11.4_
 
-- [ ] 2.3 Sistema JWT y Middleware de Autorización Avanzado
+- [x] 2.3 Sistema JWT y Middleware de Autorización Avanzado
+
+
+
 
 
 
@@ -250,7 +253,12 @@ GET  /api/v1/ai-engine/conversations/{id}/context
   - Escribir tests de seguridad para token theft scenarios y blacklisting
   - _Requerimientos: 3.1, 3.3, 3.4, 11.1, 11.5_
 
-- [ ] 2.3.1 RBAC Implementation con Roles Específicos
+- [x] 2.3.1 RBAC Implementation con Roles Específicos
+
+
+
+
+
   - **Definir roles granulares del sistema**:
     - `creator`: Acceso completo a sus recursos, gestión de widget y documentos
     - `creator-readonly`: Solo lectura de métricas y conversaciones
@@ -278,7 +286,7 @@ async def update_widget_config(creator_id: str, config: WidgetConfig):
   - Escribir tests de autorización para todos los roles y recursos
   - _Requerimientos: 3.3, 3.4, 11.1_
 
-- [ ] 2.4 Manejo de Sesiones de Usuarios Finales
+- [x] 2.4 Manejo de Sesiones de Usuarios Finales
   - Implementar creación de sesiones anónimas para usuarios del widget
   - Crear sistema de identificación persistente sin autenticación
   - Implementar asociación de sesiones con creadores específicos
@@ -290,7 +298,7 @@ async def update_widget_config(creator_id: str, config: WidgetConfig):
   - Configurar ChromaDB server con Docker
   - Implementar Ollama con modelo nomic-embed-text
   - Crear cliente ChromaDB con colecciones por creador
-  - Configurar Ollama con modelo de chat (llama2:7b-chat)
+  - Configurar Ollama con modelo de chat (gpt-oss-20b)
   - Escribir tests de conectividad y funcionalidad básica
   - _Requerimientos: 5.1, 5.2, 12.1_
 

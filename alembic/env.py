@@ -11,6 +11,7 @@ from alembic import context
 
 # Import your models here
 from shared.models.database import Base
+from shared.config.settings import get_database_url_with_validation
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -33,29 +34,7 @@ target_metadata = Base.metadata
 
 def get_database_url(async_url: bool = True):
     """Get database URL from environment or config"""
-    # Try environment variable first
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        # Fallback to config file
-        database_url = config.get_main_option("sqlalchemy.url")
-    
-    if not database_url:
-        raise ValueError(
-            "No database URL found. Please set the DATABASE_URL environment variable "
-            "or configure sqlalchemy.url in alembic.ini"
-        )
-    
-    # Normalize legacy postgres:// prefix
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-    
-    # Convert to async URL if needed
-    if async_url and database_url.startswith("postgresql://"):
-        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    elif not async_url and database_url.startswith("postgresql+asyncpg://"):
-        database_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
-    
-    return database_url
+    return get_database_url_with_validation(async_url=async_url, fallback_config=config, required=True)
 
 
 def run_migrations_offline() -> None:

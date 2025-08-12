@@ -1,39 +1,10 @@
 """Authentication and authorization models"""
 
-import string
 from pydantic import BaseModel, EmailStr, Field, validator, root_validator
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from .base import BaseEntity
-
-
-def validate_password_complexity(password: str) -> str:
-    """
-    Shared password complexity validation function
-    
-    Args:
-        password: Password to validate
-        
-    Returns:
-        The validated password
-        
-    Raises:
-        ValueError: If password doesn't meet complexity requirements
-    """
-    if len(password) < 8:
-        raise ValueError('Password must be at least 8 characters long')
-    if len(password) > 128:
-        raise ValueError('Password must not exceed 128 characters')
-    if not any(c.isupper() for c in password):
-        raise ValueError('Password must contain at least one uppercase letter')
-    if not any(c.islower() for c in password):
-        raise ValueError('Password must contain at least one lowercase letter')
-    if not any(c.isdigit() for c in password):
-        raise ValueError('Password must contain at least one digit')
-    # Use string.punctuation for broader special character support
-    if not any(c in string.punctuation for c in password):
-        raise ValueError('Password must contain at least one special character')
-    return password
+from shared.security.password_security import check_password_policy
 
 
 class CreatorCreate(BaseModel):
@@ -46,7 +17,9 @@ class CreatorCreate(BaseModel):
     @validator('password')
     def validate_password_strength(cls, v, values):
         """Basic password validation - detailed validation happens in service layer"""
-        return validate_password_complexity(v)
+        if not check_password_policy(v):
+            raise ValueError('Password does not meet security requirements. Use /api/v1/auth/password/validate for detailed feedback.')
+        return v
     
     @validator('full_name')
     def validate_full_name(cls, v):
@@ -108,7 +81,9 @@ class PasswordResetConfirm(BaseModel):
     @validator('new_password')
     def validate_new_password(cls, v):
         """Password validation for reset - uses same complexity rules as registration"""
-        return validate_password_complexity(v)
+        if not check_password_policy(v):
+            raise ValueError('Password does not meet security requirements. Use /api/v1/auth/password/validate for detailed feedback.')
+        return v
 
 
 class TokenRefreshRequest(BaseModel):

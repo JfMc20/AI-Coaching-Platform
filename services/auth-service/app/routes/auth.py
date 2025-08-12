@@ -1,6 +1,6 @@
 """
-Authentication endpoints
-Handles creator registration, login, token refresh, and password management
+Authentication endpoints with advanced JWT and RBAC support
+Handles creator registration, login, token refresh, password management, and GDPR compliance
 """
 
 import hashlib
@@ -8,9 +8,13 @@ import hmac
 import json
 import logging
 import uuid
+from datetime import datetime
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import text
+from pydantic import BaseModel
+from jose import JWTError
 
 from shared.models.auth import (
     CreatorCreate, CreatorResponse, TokenResponse, LoginRequest,
@@ -20,16 +24,47 @@ from shared.models.auth import (
 from ..services.auth_service import AuthService
 from ..services.email_service import get_email_service
 from shared.cache import get_cache_manager, get_redis_client
+from shared.security.jwt_manager import get_jwt_manager
+from shared.security.rbac import (
+    require_permission, require_role, Permission, Role,
+    rbac_manager, get_roles_from_subscription, require_admin_access
+)
+from shared.security.gdpr_compliance import gdpr_manager, DataDeletionType
 from ..dependencies.auth import (
     get_current_creator, get_current_creator_id, get_client_info,
-    login_rate_limiter, registration_rate_limiter, password_reset_rate_limiter,
-    get_password_reset_confirm_rate_limiter, RateLimitChecker
+    get_login_rate_limiter, get_registration_rate_limiter, 
+    get_password_reset_rate_limiter, get_password_reset_confirm_rate_limiter, 
+    RateLimitChecker
 )
 from ..database import get_db
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
+
+
+# GDPR Compliance Models
+class DataDeletionRequest(BaseModel):
+    """Request model for GDPR data deletion"""
+    deletion_type: DataDeletionType
+    reason: str
+    confirm_deletion: bool = False
+
+
+class DataExportResponse(BaseModel):
+    """Response model for GDPR data export"""
+    export_id: str
+    creator_id: str
+    export_date: str
+    data: Dict[str, Any]
+
+
+class KeyRotationResponse(BaseModel):
+    """Response model for JWT key rotation"""
+    status: str
+    new_key_id: str
+    rotation_date: str
+    message: str
 
 # Initialize auth service
 def generate_correlation_id() -> str:
@@ -102,7 +137,8 @@ async def register_creator(
     creator_data: CreatorCreate,
     request: Request,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    registration_limiter: RateLimitChecker = Depends(get_registration_rate_limiter)
 ):
     """
     Register a new creator account.
@@ -120,7 +156,7 @@ async def register_creator(
     correlation_id = generate_correlation_id()
     
     # Apply rate limiting
-    await registration_rate_limiter.check_rate_limit(request)
+    await registration_limiter.check_rate_limit(request)
     
     # Get client information
     client_info = await get_client_info(request)
@@ -191,7 +227,8 @@ async def register_creator(
 async def login(
     login_data: LoginRequest,
     request: Request,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    login_limiter: RateLimitChecker = Depends(get_login_rate_limiter)
 ):
     """
     Authenticate creator and return JWT tokens.
@@ -209,7 +246,7 @@ async def login(
     correlation_id = generate_correlation_id()
     
     # Apply rate limiting
-    await login_rate_limiter.check_rate_limit(request)
+    await login_limiter.check_rate_limit(request)
     
     # Get client information
     client_info = await get_client_info(request)
@@ -563,7 +600,8 @@ async def request_password_reset(
     reset_request: PasswordResetRequest,
     request: Request,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    reset_limiter: RateLimitChecker = Depends(get_password_reset_rate_limiter)
 ):
     """
     Request password reset token.
@@ -581,7 +619,7 @@ async def request_password_reset(
     correlation_id = generate_correlation_id()
     
     # Apply rate limiting
-    await password_reset_rate_limiter.check_rate_limit(request)
+    await reset_limiter.check_rate_limit(request)
     
     # Get client information
     client_info = await get_client_info(request)
@@ -717,4 +755,377 @@ async def confirm_password_reset(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Password reset failed due to internal error"
+        )
+
+# Advanced JWT and Security Endpoints
+
+@router.post(
+    "/tokens/revoke",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke JWT token",
+    description="Revoke a specific JWT token by adding it to blacklist",
+    responses={
+        204: {"description": "Token revoked successfully"},
+        401: {"description": "Authentication required"},
+        400: {"description": "Invalid token"}
+    }
+)
+async def revoke_token(
+    request: Request,
+    creator_id: str = Depends(get_current_creator_id),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Revoke a JWT token by adding it to blacklist.
+    
+    This endpoint:
+    - Extracts JTI from current access token
+    - Adds token to blacklist with expiration
+    - Logs token revocation event
+    - Prevents further use of the token
+    
+    Requires valid JWT access token.
+    """
+    # Generate correlation ID for request tracing
+    correlation_id = generate_correlation_id()
+    
+    # Get client information
+    client_info = await get_client_info(request)
+    
+    try:
+        # Extract JWT token from Authorization header
+        authorization = request.headers.get("Authorization")
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid authorization header"
+            )
+        
+        token = authorization.split(" ")[1]
+        
+        # Get JWT manager
+        jwt_manager = get_jwt_manager()
+        
+        # Decode token to get JTI and expiration
+        try:
+            payload = await jwt_manager.verify_token(token, db, check_blacklist=False)
+            jti = payload.get("jti")
+            exp = payload.get("exp")
+            
+            if not jti:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Token missing JTI claim"
+                )
+            
+            # Convert exp to datetime
+            expires_at = datetime.fromtimestamp(exp)
+            
+            # Add token to blacklist
+            await jwt_manager.blacklist_token(
+                jti=jti,
+                creator_id=creator_id,
+                reason="manual_revocation",
+                expires_at=expires_at,
+                db=db
+            )
+            
+            await db.commit()
+            
+            logger.info("JWT token revoked manually", extra={
+                "correlation_id": correlation_id,
+                "creator_id": creator_id,
+                "jti": jti[:16] + "..."
+            })
+            
+            return None
+            
+        except JWTError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid token"
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Unexpected error in token revocation", extra={
+            "correlation_id": correlation_id,
+            "creator_id": creator_id,
+            "error": str(e)
+        })
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Token revocation failed due to internal error"
+        )
+
+
+@router.post(
+    "/keys/rotate",
+    response_model=KeyRotationResponse,
+    summary="Rotate JWT signing keys",
+    description="Manually trigger JWT key rotation for security",
+    responses={
+        200: {"description": "Key rotation successful"},
+        401: {"description": "Authentication required"},
+        403: {"description": "Admin access required"}
+    }
+)
+async def rotate_jwt_keys(
+    request: Request,
+    creator: CreatorResponse = Depends(require_admin_access()),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Manually rotate JWT signing keys.
+    
+    This endpoint:
+    - Generates new RSA key pair for JWT signing
+    - Maintains old keys for grace period (24 hours)
+    - Updates key rotation timestamp
+    - Logs key rotation event
+    
+    Requires admin role access.
+    """
+    # Generate correlation ID for request tracing
+    correlation_id = generate_correlation_id()
+    
+    # Get client information
+    client_info = await get_client_info(request)
+    
+    try:
+        # Get JWT manager
+        jwt_manager = get_jwt_manager()
+        
+        # Perform key rotation
+        new_key_id = await jwt_manager.rotate_keys_if_needed()
+        
+        if new_key_id:
+            # Log key rotation event
+            await auth_service._log_audit_event(
+                db, uuid.UUID(creator.id), "jwt_key_rotated", "security",
+                f"JWT signing keys rotated by admin: {creator.email}",
+                {
+                    "admin_email": creator.email,
+                    "new_key_id": new_key_id,
+                    "rotation_type": "manual"
+                },
+                client_info["client_ip"], client_info["user_agent"], "info"
+            )
+            
+            await db.commit()
+            
+            return KeyRotationResponse(
+                status="success",
+                new_key_id=new_key_id,
+                rotation_date=datetime.utcnow().isoformat(),
+                message="JWT signing keys rotated successfully"
+            )
+        else:
+            return KeyRotationResponse(
+                status="no_rotation_needed",
+                new_key_id="",
+                rotation_date=datetime.utcnow().isoformat(),
+                message="Key rotation not needed at this time"
+            )
+        
+    except Exception as e:
+        logger.exception("Unexpected error in key rotation", extra={
+            "correlation_id": correlation_id,
+            "admin_id": creator.id,
+            "error": str(e)
+        })
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Key rotation failed due to internal error"
+        )
+
+
+# GDPR Compliance Endpoints
+
+@router.post(
+    "/gdpr/data-deletion",
+    response_model=Dict[str, Any],
+    summary="Request GDPR data deletion",
+    description="Request deletion of personal data under GDPR Article 17",
+    responses={
+        200: {"description": "Data deletion request processed"},
+        401: {"description": "Authentication required"},
+        400: {"description": "Invalid deletion request"}
+    }
+)
+async def request_data_deletion(
+    deletion_request: DataDeletionRequest,
+    request: Request,
+    creator: CreatorResponse = Depends(get_current_creator),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Request GDPR data deletion.
+    
+    This endpoint:
+    - Validates deletion request and confirmation
+    - Processes data deletion based on type (anonymization, soft delete, hard delete)
+    - Logs GDPR compliance event
+    - Returns deletion confirmation
+    
+    Supports three deletion types:
+    - anonymization: Replace PII with anonymous data
+    - soft_delete: Mark as deleted but retain for compliance
+    - hard_delete: Complete removal from system
+    """
+    # Generate correlation ID for request tracing
+    correlation_id = generate_correlation_id()
+    
+    # Get client information
+    client_info = await get_client_info(request)
+    
+    try:
+        # Validate deletion confirmation
+        if not deletion_request.confirm_deletion:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Data deletion must be explicitly confirmed"
+            )
+        
+        # Process data deletion request
+        result = await gdpr_manager.request_data_deletion(
+            creator_id=creator.id,
+            deletion_type=deletion_request.deletion_type,
+            reason=deletion_request.reason,
+            db=db,
+            client_ip=client_info["client_ip"],
+            user_agent=client_info["user_agent"]
+        )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Unexpected error in GDPR data deletion", extra={
+            "correlation_id": correlation_id,
+            "creator_id": creator.id,
+            "error": str(e)
+        })
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Data deletion request failed due to internal error"
+        )
+
+
+@router.get(
+    "/gdpr/data-export",
+    response_model=DataExportResponse,
+    summary="Export personal data",
+    description="Export all personal data under GDPR Article 20",
+    responses={
+        200: {"description": "Data export successful"},
+        401: {"description": "Authentication required"}
+    }
+)
+async def export_personal_data(
+    request: Request,
+    creator: CreatorResponse = Depends(get_current_creator),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Export all personal data for GDPR compliance.
+    
+    This endpoint:
+    - Collects all personal data associated with the creator
+    - Includes profile information, sessions, and audit logs
+    - Returns structured data export
+    - Logs data export event
+    
+    Supports GDPR Article 20 (Right to data portability).
+    """
+    # Generate correlation ID for request tracing
+    correlation_id = generate_correlation_id()
+    
+    # Get client information
+    client_info = await get_client_info(request)
+    
+    try:
+        # Export user data
+        export_data = await gdpr_manager.export_user_data(
+            creator_id=creator.id,
+            db=db
+        )
+        
+        # Log data export event
+        await auth_service._log_audit_event(
+            db, uuid.UUID(creator.id), "gdpr_data_exported", "gdpr",
+            f"Personal data exported: {creator.email}",
+            {
+                "email": creator.email,
+                "export_size": len(str(export_data)),
+                "data_types": list(export_data.keys())
+            },
+            client_info["client_ip"], client_info["user_agent"], "info"
+        )
+        
+        await db.commit()
+        
+        return DataExportResponse(
+            export_id=str(uuid.uuid4()),
+            creator_id=creator.id,
+            export_date=datetime.utcnow().isoformat(),
+            data=export_data
+        )
+        
+    except Exception as e:
+        logger.exception("Unexpected error in GDPR data export", extra={
+            "correlation_id": correlation_id,
+            "creator_id": creator.id,
+            "error": str(e)
+        })
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Data export failed due to internal error"
+        )
+
+
+# Health Check Endpoint
+
+@router.get(
+    "/health",
+    summary="Health check",
+    description="Check authentication service health",
+    responses={
+        200: {"description": "Service is healthy"},
+        503: {"description": "Service is unhealthy"}
+    }
+)
+async def health_check(db: AsyncSession = Depends(get_db)):
+    """
+    Health check endpoint for the authentication service.
+    
+    This endpoint:
+    - Checks database connectivity
+    - Validates JWT key availability
+    - Returns service status and timestamp
+    
+    Used by API Gateway and monitoring systems.
+    """
+    try:
+        # Test database connectivity
+        await db.execute(text("SELECT 1"))
+        
+        # Test JWT manager
+        jwt_manager = get_jwt_manager()
+        await jwt_manager.key_manager.get_current_key()
+        
+        return {
+            "status": "healthy",
+            "service": "auth-service",
+            "timestamp": datetime.utcnow().isoformat(),
+            "version": "1.0.0"
+        }
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service unhealthy"
         )

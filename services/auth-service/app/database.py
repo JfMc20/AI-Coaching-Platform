@@ -14,6 +14,8 @@ from sqlalchemy.pool import NullPool
 from sqlalchemy import event, text
 import time
 
+from shared.config.settings import get_database_url_with_validation
+
 from shared.models.database import Base
 
 logger = logging.getLogger(__name__)
@@ -47,16 +49,8 @@ class DatabaseManager:
             return default
     
     def __init__(self):
-        # Get database URL from environment
-        self.database_url = os.getenv("DATABASE_URL")
-        if not self.database_url:
-            raise ValueError("DATABASE_URL environment variable is required")
-        
-        # Convert to async URL if needed
-        if self.database_url.startswith("postgresql://"):
-            self.database_url = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        elif not self.database_url.startswith("postgresql+asyncpg://"):
-            raise ValueError("DATABASE_URL must use postgresql:// or postgresql+asyncpg:// scheme")
+        # Get database URL using centralized validation and conversion
+        self.database_url = get_database_url_with_validation(async_url=True, required=True)
         
         # Parse pool settings from environment with validation
         pool_size = self._parse_int_env("AUTH_DB_POOL_SIZE", 20)

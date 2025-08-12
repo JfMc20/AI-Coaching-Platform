@@ -6,11 +6,116 @@ Handles environment variables, secrets, and configuration validation
 import os
 import logging
 from typing import Optional, Dict, Any, List
-from pydantic import BaseSettings, Field, validator
+try:
+    from pydantic_settings import BaseSettings
+    from pydantic import Field, field_validator
+except ImportError:
+    try:
+        # Fallback for older pydantic versions
+        from pydantic import BaseSettings, Field, validator as field_validator
+    except ImportError:
+        # If pydantic is not available, create dummy classes for the validation function to work
+        BaseSettings = object
+        Field = lambda *args, **kwargs: None
+        field_validator = lambda *args, **kwargs: lambda func: func
 from functools import lru_cache
 
 
 logger = logging.getLogger(__name__)
+
+
+def validate_service_environment(required_vars: List[str], logger: Optional[logging.Logger] = None) -> None:
+    """
+    Centralized environment variable validation for services
+    
+    Validates that all required environment variables are set and logs any missing variables.
+    Raises RuntimeError with the same message format used by all services for backward compatibility.
+    
+    Args:
+        required_vars: List of required environment variable names. Must be a non-empty list of strings.
+        logger: Optional logger instance from the calling service. If not provided,
+                uses a specific logger for environment validation.
+        
+    Raises:
+        ValueError: If required_vars is not a valid list of strings
+        RuntimeError: If any required environment variables are missing
+    """
+    # Input validation
+    if not isinstance(required_vars, list):
+        raise ValueError("required_vars must be a list")
+    
+    if not required_vars:
+        raise ValueError("required_vars cannot be empty")
+    
+    if not all(isinstance(var, str) and var.strip() for var in required_vars):
+        raise ValueError("required_vars must contain only non-empty strings")
+    
+    # Check for missing environment variables
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    if missing_vars:
+        # Use service logger if provided, otherwise use a specific logger for env validation
+        env_logger = logger if logger is not None else logging.getLogger('shared.config.env_validation')
+        env_logger.error(f"Missing required environment variables: {missing_vars}")
+        raise RuntimeError(f"Missing required environment variables: {missing_vars}")
+
+
+def get_database_url_with_validation(
+    async_url: bool = True, 
+    fallback_config: Optional[Any] = None, 
+    required: bool = True
+) -> Optional[str]:
+    """
+    Centralized DATABASE_URL parsing, validation, and conversion
+    
+    Consolidates all DATABASE_URL handling logic from auth-service, migrations, and alembic.
+    Handles URL validation, scheme normalization, and async/sync conversion.
+    
+    Args:
+        async_url: If True, converts to postgresql+asyncpg:// scheme. If False, uses postgresql://
+        fallback_config: Optional config object to fallback to config.get_main_option("sqlalchemy.url")
+        required: If True, raises ValueError when URL is not found. If False, returns None
+        
+    Returns:
+        Validated and normalized database URL, or None if not required and not found
+        
+    Raises:
+        ValueError: If URL is required but not found, or if URL has invalid scheme
+    """
+    # Try environment variable first
+    database_url = os.getenv("DATABASE_URL")
+    
+    # Fallback to config file if provided
+    if not database_url and fallback_config is not None:
+        try:
+            database_url = fallback_config.get_main_option("sqlalchemy.url")
+        except (AttributeError, TypeError):
+            # Config object doesn't have get_main_option method or is invalid
+            pass
+    
+    # Handle missing URL based on required flag
+    if not database_url:
+        if required:
+            raise ValueError(
+                "No database URL found. Please set the DATABASE_URL environment variable"
+                + (" or configure sqlalchemy.url in alembic.ini" if fallback_config else "")
+            )
+        return None
+    
+    # Normalize legacy postgres:// prefix to postgresql://
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    # Validate scheme before conversion
+    if not (database_url.startswith("postgresql://") or database_url.startswith("postgresql+asyncpg://")):
+        raise ValueError("DATABASE_URL must use postgresql:// or postgresql+asyncpg:// scheme")
+    
+    # Convert between sync and async URLs based on async_url parameter
+    if async_url and database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif not async_url and database_url.startswith("postgresql+asyncpg://"):
+        database_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    
+    return database_url
 
 
 class BaseConfig(BaseSettings):
@@ -45,13 +150,15 @@ class BaseConfig(BaseSettings):
                 return [x.strip() for x in raw_val.split(',')]
             return cls.json_loads(raw_val)
     
-    @validator('cors_origins', 'allowed_hosts', pre=True)
+    @field_validator('cors_origins', 'allowed_hosts', mode='before')
+    @classmethod
     def parse_list_from_string(cls, v):
         if isinstance(v, str):
             return [x.strip() for x in v.split(',')]
         return v
     
-    @validator('log_level')
+    @field_validator('log_level')
+    @classmethod
     def validate_log_level(cls, v):
         valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
         if v.upper() not in valid_levels:
@@ -68,7 +175,8 @@ class AuthServiceConfig(BaseConfig):
     access_token_expire_minutes: int = Field(default=1440, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     refresh_token_expire_days: int = Field(default=30, env="REFRESH_TOKEN_EXPIRE_DAYS")
     
-    @validator('jwt_secret_key')
+    @field_validator('jwt_secret_key')
+    @classmethod
     def validate_jwt_secret(cls, v):
         if len(v) < 16:
             logger.warning("JWT secret key is shorter than recommended (16+ characters)")
@@ -89,7 +197,8 @@ class CreatorHubServiceConfig(BaseConfig):
     uploads_dir: str = Field(default="./uploads", env="UPLOADS_DIR")
     supported_formats: List[str] = Field(default=[".pdf", ".txt", ".docx", ".md"], env="SUPPORTED_FORMATS")
     
-    @validator('supported_formats', pre=True)
+    @field_validator('supported_formats', mode='before')
+    @classmethod
     def parse_supported_formats(cls, v):
         if isinstance(v, str):
             return [x.strip() for x in v.split(',')]
@@ -115,7 +224,8 @@ class AIEngineServiceConfig(BaseConfig):
     default_chunk_size: int = Field(default=1000, env="DEFAULT_CHUNK_SIZE")
     default_chunk_overlap: int = Field(default=200, env="DEFAULT_CHUNK_OVERLAP")
     
-    @validator('chroma_shard_count')
+    @field_validator('chroma_shard_count')
+    @classmethod
     def validate_shard_count(cls, v):
         if not 5 <= v <= 50:
             raise ValueError('chroma_shard_count must be between 5 and 50')
@@ -163,6 +273,9 @@ def validate_required_env_vars(required_vars: List[str]) -> Dict[str, str]:
         raise RuntimeError(f"Missing required environment variables: {missing_vars}")
     
     return env_vars
+
+
+
 
 
 @lru_cache()
