@@ -67,7 +67,7 @@ services:
 
   # AI/ML Services
   ollama:
-    image: ollama/ollama:0.1.17
+    image: ollama/ollama:latest
     container_name: mvp-ollama
     ports:
       - "11434:11434"
@@ -161,7 +161,7 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       CHROMADB_URL: ${CHROMADB_URL:-http://chromadb:8000}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
-      CHAT_MODEL: ${CHAT_MODEL:-llama2:7b-chat}
+      CHAT_MODEL: ${CHAT_MODEL:-gpt-oss:20b}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       DEBUG: ${DEBUG:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

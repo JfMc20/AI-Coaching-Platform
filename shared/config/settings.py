@@ -209,12 +209,12 @@ class AIEngineServiceConfig(BaseConfig):
     """Configuration for AI Engine Service"""
     
     # AI Service URLs
-    ollama_url: str = Field(..., env="OLLAMA_URL")
-    chromadb_url: str = Field(..., env="CHROMADB_URL")
+    ollama_url: str = Field(default="http://localhost:11434", env="OLLAMA_URL")
+    chromadb_url: str = Field(default="http://localhost:8000", env="CHROMADB_URL")
     
     # Model Configuration
     embedding_model: str = Field(default="nomic-embed-text", env="EMBEDDING_MODEL")
-    chat_model: str = Field(default="llama2:7b-chat", env="CHAT_MODEL")
+    chat_model: str = Field(default="gpt-oss:20b", env="CHAT_MODEL")
     
     # ChromaDB Configuration
     chroma_shard_count: int = Field(default=10, env="CHROMA_SHARD_COUNT")

@@ -27,7 +27,8 @@ RUN echo "fastapi==0.104.0" > requirements.txt && \
     echo "chromadb==0.4.15" >> requirements.txt && \
     echo "ollama==0.1.7" >> requirements.txt && \
     echo "numpy==1.25.2" >> requirements.txt && \
-    echo "pydantic==2.5.0" >> requirements.txt
+    echo "pydantic==2.5.0" >> requirements.txt && \
+    echo "aiohttp==3.9.1" >> requirements.txt
 
 # Pre-download and build wheels
 RUN pip wheel --wheel-dir /build/wheels -r requirements.txt

@@ -294,7 +294,10 @@ async def update_widget_config(creator_id: str, config: WidgetConfig):
   - Escribir tests para flujos de sesión completos
   - _Requerimientos: 3.2, 3.5_
 
-- [ ] 3. Configuración de ChromaDB y Ollama
+- [-] 3. Configuración de ChromaDB y Ollama
+
+
+
   - Configurar ChromaDB server con Docker
   - Implementar Ollama con modelo nomic-embed-text
   - Crear cliente ChromaDB con colecciones por creador
@@ -303,6 +306,8 @@ async def update_widget_config(creator_id: str, config: WidgetConfig):
   - _Requerimientos: 5.1, 5.2, 12.1_
 
 - [ ] 3.1 Configuración de ChromaDB Multi-Tenant Escalable
+
+
   - **Implementar estrategia de colecciones escalable** para soportar 100,000+ creadores
   - **Matriz de Decisión: Metadata Filtering vs Collection-per-Tenant**
     
