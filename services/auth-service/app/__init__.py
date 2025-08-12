@@ -1,1 +1,1 @@
-# Auth Service Package
+"""Auth Service Application Package"""

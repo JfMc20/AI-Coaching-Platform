@@ -65,17 +65,23 @@ COPY --from=builder --chown=appuser:appuser /build/requirements.txt /tmp/
 RUN pip install --user --no-cache-dir --find-links /tmp/wheels -r /tmp/requirements.txt && \
     rm -rf /tmp/wheels /tmp/requirements.txt
 
-# Copy wait-for script and application files with proper ownership
+# Copy scripts and application files with proper ownership
 COPY --chown=appuser:appuser scripts/wait-for-services.py /app/wait-for-services.py
+COPY --chown=appuser:appuser scripts/healthcheck.py /usr/local/bin/healthcheck.py
 COPY --chown=appuser:appuser shared/ /app/shared/
 COPY --chown=appuser:appuser services/ai-engine-service/app/ /app/app/
+
+# Make health check script executable
+USER root
+RUN chmod +x /usr/local/bin/healthcheck.py
+USER appuser
 
 # Expose port
 EXPOSE 8003
 
-# Health check using Python with explicit HTTP 200 check and dynamic port
+# Health check using dedicated script
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD ["python3", "-c", "import urllib.request,sys,os; port=os.environ.get('PORT','8003'); resp=urllib.request.urlopen(f'http://localhost:{port}/health',timeout=5); sys.exit(0 if resp.getcode()==200 else 1)"]
+    CMD ["python3", "/usr/local/bin/healthcheck.py"]
 
 # Run the application with comprehensive dependency waiting for AI services
 CMD ["sh", "-c", "python3 /app/wait-for-services.py postgres:tcp://postgres:5432 redis:tcp://redis:6379 ollama:tcp://ollama:11434 chromadb:tcp://chromadb:8000 --timeout 180 --verbose && uvicorn app.main:app --host 0.0.0.0 --port 8003 --workers 1"]

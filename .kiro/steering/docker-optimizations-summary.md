@@ -15,14 +15,16 @@ All services must use multi-stage builds for optimal image size and security:
 FROM python:3.11-slim as builder
 RUN apt-get update && apt-get install -y build-essential gcc
 COPY requirements.txt .
-RUN pip wheel --no-cache-dir --no-deps --wheel-dir /wheels -r requirements.txt
+RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
 
 # Stage 2: Runtime
 FROM python:3.11-slim as runtime
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 WORKDIR /app
 COPY --from=builder /wheels /wheels
-RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
+COPY --from=builder /build/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --no-index --find-links /wheels -r /tmp/requirements.txt && \
+    rm -rf /wheels /tmp/requirements.txt
 COPY --chown=appuser:appuser . /app/
 USER appuser
 ```
@@ -31,8 +33,13 @@ USER appuser
 Use Python-native health checks with exec form to avoid shell issues:
 
 ```dockerfile
+# Copy health check script
+COPY scripts/healthcheck.py /usr/local/bin/healthcheck.py
+RUN chmod +x /usr/local/bin/healthcheck.py
+
+# Health check with dedicated script
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["python3", "-c", "import urllib.request,sys,os; port=os.environ.get('PORT','8001'); resp=urllib.request.urlopen(f'http://localhost:{port}/health',timeout=5); sys.exit(0 if resp.getcode()==200 else 1)"]
+    CMD ["python3", "/usr/local/bin/healthcheck.py"]
 ```
 
 ## Service Configuration Standards

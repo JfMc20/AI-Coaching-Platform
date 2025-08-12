@@ -2,198 +2,60 @@
 inclusion: always
 ---
 
-# Code Quality Standards
+# Code Quality & Architecture Standards
 
 ## Project Context
+Multi-Channel Proactive Coaching Platform with microservices architecture: FastAPI, PostgreSQL (RLS), Redis, Ollama, ChromaDB.
 
-**Multi-Channel Proactive Coaching Platform** - AI-powered coaching platform with microservices architecture using FastAPI, PostgreSQL, Redis, Ollama, and ChromaDB. Implements multi-tenant Row Level Security for data isolation.
+## Mandatory Development Patterns
 
-## Core Development Rules
+### Code Reuse & Discovery
+- **Search first**: Always check existing files for similar functionality before creating new code
+- **Use shared/**: Leverage `shared/utils/`, `shared/models/`, `shared/cache/` for common functionality
+- **Match patterns**: Follow existing service structure and naming conventions
+- **Eliminate duplication**: Consolidate repeated logic immediately
 
-### 1. Code Reuse & Consistency
-- **Search before creating**: Always check existing files for similar functionality
-- **Use shared components**: Leverage `shared/utils/`, `shared/models/`, `shared/cache/`
-- **Follow established patterns**: Match existing service structure and naming conventions
-- **Refactor duplicated code**: Immediately consolidate repeated logic
+### Python & FastAPI Requirements
+- **Type hints**: MANDATORY for all function parameters and return values
+- **Pydantic models**: Required for all request/response validation
+- **Async patterns**: Use `async/await` for ALL I/O operations (DB, Redis, HTTP)
+- **SQLAlchemy 2.0**: Use async syntax with proper session management
+- **Error handling**: Implement proper HTTP status codes and structured exceptions
 
-### 2. Python & FastAPI Standards
-- **Type hints mandatory**: All function parameters and return values must have type hints
-- **Pydantic schemas**: Use for all request/response validation and serialization
-- **Async patterns**: Use `async/await` for all I/O operations (DB, Redis, HTTP)
-- **SQLAlchemy 2.0**: Use modern async syntax with proper session management
-- **Error handling**: Implement proper HTTP status codes and exception handling
+### Async Implementation Patterns
 
-### 7. Async Patterns & Best Practices
+**Required Libraries:**
+- `aiohttp` (not `requests`), `asyncpg` (not `psycopg2`), `aioredis` (not `redis`)
+- `sqlalchemy.ext.asyncio`, `asyncio.sleep` (not `time.sleep`)
 
-#### Recommended Async Libraries
+**Blocking Code Pattern:**
 ```python
-# ✅ RECOMMENDED - Use these async libraries
-import asyncio
-import aiohttp          # HTTP client
-import asyncpg          # PostgreSQL driver
-import aioredis         # Redis client
-import sqlalchemy.ext.asyncio  # SQLAlchemy async
-from fastapi import FastAPI    # Async web framework
-```
-
-#### Libraries to Avoid in Async Context
-```python
-# ❌ AVOID - These block the event loop
-import requests         # Use aiohttp instead
-import psycopg2        # Use asyncpg instead
-import redis           # Use aioredis instead
-import time.sleep      # Use asyncio.sleep instead
-```
-
-#### Managing Synchronous Code
-```python
-# Pattern 1: Isolate blocking code in thread pool
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
-
+# Isolate blocking operations in thread pool
 async def handle_blocking_operation(data: str) -> str:
-    """Handle unavoidable blocking operations"""
     loop = asyncio.get_event_loop()
     with ThreadPoolExecutor() as executor:
-        result = await loop.run_in_executor(
-            executor, 
-            blocking_function, 
-            data
-        )
-    return result
-
-# Pattern 2: Use asyncio utilities for timeouts
-async def external_api_call() -> dict:
-    """External API call with proper timeout handling"""
-    try:
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=30)
-        ) as session:
-            async with session.get(url) as response:
-                return await response.json()
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="External service timeout")
+        return await loop.run_in_executor(executor, blocking_function, data)
 ```
 
-#### SQLAlchemy Async Reference Implementation
+**Database Session Pattern:**
 ```python
-# Reference implementation for async database operations
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from contextlib import asynccontextmanager
-
-class DatabaseManager:
-    def __init__(self, database_url: str):
-        self.engine = create_async_engine(
-            database_url,
-            pool_size=20,
-            max_overflow=30,
-            pool_pre_ping=True,
-            pool_recycle=3600,
-            echo=False
-        )
-        self.async_session = sessionmaker(
-            self.engine, 
-            class_=AsyncSession, 
-            expire_on_commit=False
-        )
-    
-    @asynccontextmanager
-    async def get_session(self) -> AsyncSession:
-        """Context manager for database sessions"""
-        async with self.async_session() as session:
-            try:
-                yield session
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
-            finally:
-                await session.close()
-
-# Usage pattern
-async def create_coaching_program(
-    program_data: CoachingProgramCreate,
-    db_manager: DatabaseManager
-) -> CoachingProgram:
-    async with db_manager.get_session() as session:
-        program = CoachingProgram(**program_data.dict())
-        session.add(program)
-        await session.flush()  # Get ID without committing
-        return program
+# Use existing DatabaseManager from shared/
+async with db_manager.get_session() as session:
+    await session.flush()  # Get ID without committing
+    await session.commit()  # Explicit commit
 ```
 
-#### External Service Integration Patterns
-```python
-# Connection pooling and concurrency limits
-class ExternalServiceClient:
-    def __init__(self):
-        self.semaphore = asyncio.Semaphore(10)  # Max 10 concurrent requests
-        self.session = aiohttp.ClientSession(
-            connector=aiohttp.TCPConnector(
-                limit=100,  # Total connection pool size
-                limit_per_host=20,  # Per-host connection limit
-                ttl_dns_cache=300,  # DNS cache TTL
-                use_dns_cache=True,
-            ),
-            timeout=aiohttp.ClientTimeout(
-                total=30,      # Total timeout
-                connect=5,     # Connection timeout
-                sock_read=10   # Socket read timeout
-            )
-        )
-    
-    async def make_request(self, url: str, **kwargs) -> dict:
-        """Rate-limited external API request"""
-        async with self.semaphore:  # Limit concurrency
-            try:
-                async with self.session.get(url, **kwargs) as response:
-                    response.raise_for_status()
-                    return await response.json()
-            except aiohttp.ClientError as e:
-                logger.error(f"External API error: {e}")
-                raise HTTPException(status_code=502, detail="External service error")
-    
-    async def close(self):
-        """Cleanup connections"""
-        await self.session.close()
-```
+### Architecture Requirements
+- **Service isolation**: Logic stays within `services/{service-name}/`
+- **Multi-tenancy**: ALWAYS implement Row Level Security for data isolation
+- **Configuration**: Environment variables only, never hardcode values
+- **Migrations**: Use Alembic for ALL schema changes
 
-### 3. Architecture Compliance
-- **Service isolation**: Keep service-specific logic within `services/{service-name}/`
-- **Multi-tenancy**: Always implement Row Level Security for data isolation
-- **Caching strategy**: Use Redis for frequently accessed data
-- **Configuration**: Use environment variables, never hardcode values
-- **Database migrations**: Use Alembic for all schema changes
-
-### 4. Code Quality Requirements
-
-#### Measurable Quality Gates
-- **Cyclomatic Complexity**: Maximum 10 per function (use `radon cc` or `flake8-mccabe`)
-- **Maintainability Index**: Minimum 20 per module (use `radon mi`)
-- **Code Duplication**: Maximum 5% duplicate blocks (use `radon raw`)
-- **Line length**: 100 characters maximum (Black formatter)
-- **Test Coverage**: Minimum 80% for business logic
-
-#### Refactoring Standards
-- **Business Logic Refactors**: Must include or preserve existing tests
-- **Large Refactors**: Split into PRs <500 lines of changes
-- **Breaking Changes**: Require migration strategy and backward compatibility plan
-- **Dead Code**: Remove commented code, unused imports, obsolete functions
-- **Documentation**: Update relevant docs after any code change
-
-#### Automated Quality Checks
-```yaml
-# Example CI configuration for quality gates
-quality_gates:
-  complexity:
-    max_cyclomatic: 10
-    max_maintainability_index: 20
-  duplication:
-    max_percentage: 5
-  coverage:
-    min_percentage: 80
-```
+### Quality Gates (Non-Negotiable)
+- **Cyclomatic Complexity**: ≤ 10 per function
+- **Test Coverage**: ≥ 80% for business logic
+- **Line Length**: 100 characters max (Black formatter)
+- **Type Hints**: Required on ALL functions
 
 ### 5. Multi-Tenant Implementation Standards
 
