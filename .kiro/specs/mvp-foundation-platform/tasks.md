@@ -227,6 +227,9 @@ GET  /api/v1/ai-engine/conversations/{id}/context
   - _Requerimientos: 3.1, 3.2, 11.4_
 
 - [ ] 2.3 Sistema JWT y Middleware de Autorización Avanzado
+
+
+
   - **Implementar generación y validación de JWT tokens** con algoritmo RS256 y key rotation
   - Configurar JWT con claims estándar (iss, aud, exp, iat, jti) y custom claims (creator_id, roles)
   - **Implementar JTI (JWT ID) blacklisting** usando Redis para tracking de tokens invalidados

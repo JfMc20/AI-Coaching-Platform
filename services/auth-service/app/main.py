@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import os
 import logging
+from datetime import datetime
 from contextlib import asynccontextmanager
 
 from .database import get_db_manager, init_database, close_db
@@ -118,7 +119,7 @@ async def health_check():
         "status": "healthy",
         "service": "auth-service",
         "version": "1.0.0",
-        "timestamp": "2024-01-01T00:00:00Z"
+        "timestamp": datetime.utcnow().isoformat() + "Z"
     }
 
 
@@ -162,7 +163,7 @@ async def readiness_check():
                 "status": "ready" if all_healthy else "not_ready",
                 "service": "auth-service",
                 "checks": checks,
-                "timestamp": "2024-01-01T00:00:00Z"
+                "timestamp": datetime.utcnow().isoformat() + "Z"
             }
         )
         
@@ -175,7 +176,7 @@ async def readiness_check():
                 "service": "auth-service",
                 "checks": checks,
                 "error": str(e),
-                "timestamp": "2024-01-01T00:00:00Z"
+                "timestamp": datetime.utcnow().isoformat() + "Z"
             }
         )
 
@@ -203,7 +204,7 @@ async def global_exception_handler(request, exc):
         content={
             "detail": "Internal server error",
             "type": "internal_error",
-            "timestamp": "2024-01-01T00:00:00Z"
+            "timestamp": datetime.utcnow().isoformat() + "Z"
         }
     )
 

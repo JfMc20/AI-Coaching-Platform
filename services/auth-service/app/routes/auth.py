@@ -3,6 +3,8 @@ Authentication endpoints
 Handles creator registration, login, token refresh, and password management
 """
 
+import hashlib
+import hmac
 import json
 import logging
 import uuid
@@ -16,11 +18,12 @@ from shared.models.auth import (
     PasswordStrengthResponse
 )
 from ..services.auth_service import AuthService
+from ..services.email_service import get_email_service
 from shared.cache import get_cache_manager, get_redis_client
 from ..dependencies.auth import (
     get_current_creator, get_current_creator_id, get_client_info,
     login_rate_limiter, registration_rate_limiter, password_reset_rate_limiter,
-    get_password_reset_confirm_rate_limiter
+    get_password_reset_confirm_rate_limiter, RateLimitChecker
 )
 from ..database import get_db
 
@@ -32,6 +35,18 @@ router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 def generate_correlation_id() -> str:
     """Generate a unique correlation ID for request tracing"""
     return str(uuid.uuid4())
+
+def generate_secure_cache_key(password: str, key_prefix: str = "password_strength") -> str:
+    """Generate a secure cache key using HMAC-SHA256"""
+    # Use a server-side secret for HMAC (in production, this should come from environment)
+    secret_key = b"auth_service_cache_secret_key_2024"  # TODO: Move to environment variable
+    
+    # Create HMAC digest of the password
+    password_bytes = password.encode('utf-8')
+    hmac_digest = hmac.new(secret_key, password_bytes, hashlib.sha256).hexdigest()
+    
+    return f"{key_prefix}:{hmac_digest}"
+
 auth_service = AuthService()
 
 
@@ -371,27 +386,53 @@ async def logout(
     
     # Extract refresh token from request body if provided
     refresh_token = None
-    if hasattr(request, 'json'):
-        try:
-            body = await request.json()
-            refresh_token = body.get('refresh_token')
-        except json.JSONDecodeError as e:
-            logger.warning("Failed to parse JSON from request body", extra={
+    
+    # Safe JSON parsing with proper validation
+    content_type = request.headers.get('content-type', '').lower()
+    content_length = request.headers.get('content-length')
+    
+    if content_type.startswith('application/json'):
+        # Check content length limits (1MB max)
+        if content_length and int(content_length) > 1024 * 1024:
+            logger.warning("Request body too large for JSON parsing", extra={
                 "correlation_id": correlation_id,
                 "creator_id": creator_id,
-                "error": str(e),
+                "content_length": content_length,
                 "client_ip": client_info["client_ip"]
             })
-            # Continue without refresh token - it's optional for logout
-        except Exception as e:
-            logger.warning("Unexpected error reading request body", extra={
-                "correlation_id": correlation_id,
-                "creator_id": creator_id,
-                "error": str(e),
-                "error_type": type(e).__name__,
-                "client_ip": client_info["client_ip"]
-            })
-            # Continue without refresh token - it's optional for logout
+        elif content_length and int(content_length) > 0:
+            try:
+                # Read body as text first
+                body_text = await request.body()
+                if body_text:
+                    body_str = body_text.decode('utf-8')
+                    body = json.loads(body_str)
+                    refresh_token = body.get('refresh_token')
+            except json.JSONDecodeError as e:
+                logger.warning("Failed to parse JSON from request body", extra={
+                    "correlation_id": correlation_id,
+                    "creator_id": creator_id,
+                    "error": str(e),
+                    "client_ip": client_info["client_ip"]
+                })
+                # Continue without refresh token - it's optional for logout
+            except UnicodeDecodeError as e:
+                logger.warning("Failed to decode request body as UTF-8", extra={
+                    "correlation_id": correlation_id,
+                    "creator_id": creator_id,
+                    "error": str(e),
+                    "client_ip": client_info["client_ip"]
+                })
+                # Continue without refresh token - it's optional for logout
+            except Exception as e:
+                logger.warning("Unexpected error reading request body", extra={
+                    "correlation_id": correlation_id,
+                    "creator_id": creator_id,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "client_ip": client_info["client_ip"]
+                })
+                # Continue without refresh token - it's optional for logout
     
     try:
         # Logout creator
@@ -476,8 +517,8 @@ async def validate_password_strength(
     # Initialize cache manager
     cache_manager = get_cache_manager()
     
-    # Generate cache key for password strength validation
-    cache_key = f"password_strength:{hash(password)}"
+    # Generate secure cache key for password strength validation
+    cache_key = generate_secure_cache_key(password, "password_strength")
     
     try:
         # Try to get cached result
@@ -564,7 +605,6 @@ async def request_password_reset(
         
         # Send email in background task if token was generated
         if reset_token:
-            from ..services.email_service import get_email_service
             email_service = get_email_service()
             
             # Add background task to send email

@@ -588,11 +588,18 @@ class AuthService:
         }
         
         # Generate access token
-        access_token = jwt.encode(
-            access_token_payload,
-            self.jwt_secret_key,
-            algorithm=self.jwt_algorithm
-        )
+        try:
+            access_token = jwt.encode(
+                access_token_payload,
+                self.jwt_secret_key,
+                algorithm=self.jwt_algorithm
+            )
+        except JWTError as e:
+            logger.error(f"JWT encoding failed for creator {creator_id}: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Token generation failed"
+            )
         
         # Generate refresh token
         refresh_token_value = secrets.token_urlsafe(32)
@@ -939,6 +946,9 @@ class AuthService:
         
         Args:
             creator_id: Creator ID
+            
+        Raises:
+            Exception: If session invalidation fails
         """
         try:
             from shared.cache.session_store import get_session_store
@@ -950,4 +960,6 @@ class AuthService:
             logger.info(f"Invalidating sessions for creator {creator_id}")
             
         except Exception as e:
-            logger.error(f"Error invalidating creator sessions: {e}")
+            logger.error(f"Error invalidating creator sessions for {creator_id}: {e}")
+            # Re-raise the exception so callers can react to the failure
+            raise

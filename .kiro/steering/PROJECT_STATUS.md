@@ -2,37 +2,36 @@
 inclusion: always
 ---
 
-# MVP Coaching AI Platform - Project Status & Conventions
+# MVP Coaching AI Platform - Development Guide
 
 ## Architecture Overview
 
-### Microservices Structure
-- **Auth Service** (Port 8001): JWT authentication + multi-tenancy at `/api/v1/auth/`
-- **Creator Hub Service** (Port 8002): Content and creator management at `/api/v1/creators/`
-- **AI Engine Service** (Port 8003): Ollama + ChromaDB + embeddings at `/api/v1/ai/`
-- **Channel Service** (Port 8004): WebSockets + multi-channel at `/api/v1/channels/`
+### Microservices (Port → Route)
+- **Auth Service** (8001) → `/api/v1/auth/` - JWT authentication, multi-tenancy
+- **Creator Hub** (8002) → `/api/v1/creators/` - Content management, coaching programs
+- **AI Engine** (8003) → `/api/v1/ai/` - Ollama LLM, ChromaDB embeddings
+- **Channel Service** (8004) → `/api/v1/channels/` - WebSockets, real-time messaging
 
-### Infrastructure Stack
-- **PostgreSQL 15**: Primary database with Row Level Security for tenant isolation
-- **Redis 7**: Multi-tenant caching with stampede prevention
-- **Ollama**: Local LLM service (llama2:7b-chat model)
-- **ChromaDB**: Vector database for embeddings
-- **Nginx**: API Gateway with rate limiting and CORS
+### Core Stack
+- **Backend**: FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL 15 (RLS enabled)
+- **Caching**: Redis 7 (multi-tenant namespacing)
+- **Gateway**: Nginx (routing, security headers, rate limiting)
+- **AI/ML**: Ollama (llama2:7b-chat) + ChromaDB (vector embeddings)
 
-## Required Implementation Patterns
+## Critical Implementation Patterns
 
 ### Multi-Tenant Security (MANDATORY)
-All database operations MUST implement Row Level Security:
+Every database operation MUST set tenant context:
 
 ```python
-# Required pattern for setting tenant context
+# Required before any DB operation
 async def set_tenant_context(creator_id: str, db: AsyncSession):
     await db.execute(
         text("SELECT set_config('app.current_creator_id', :creator_id, true)"),
         {"creator_id": creator_id}
     )
 
-# Usage in dependencies
+# Standard FastAPI dependency
 async def get_tenant_db(
     creator_id: str = Depends(get_current_creator_id),
     db: AsyncSession = Depends(get_db)
@@ -42,8 +41,6 @@ async def get_tenant_db(
 ```
 
 ### Service Health Checks (MANDATORY)
-All services MUST implement `/health` endpoint:
-
 ```python
 @router.get("/health")
 async def health_check():
@@ -54,86 +51,78 @@ async def health_check():
     }
 ```
 
-### AI/ML Integration Patterns
-- Use **Model Registry** for tracking AI model metadata and versions
-- Implement **graceful degradation** when AI services fail
-- Use **versioned prompt templates** with fallback strategies
-- Namespace embeddings by tenant for isolation
+### Code Quality Requirements (NON-NEGOTIABLE)
+- **Type hints**: ALL functions must have parameter and return type annotations
+- **Async operations**: Use `async/await` for ALL I/O (database, Redis, HTTP calls)
+- **Pydantic models**: Required for request/response validation and serialization
+- **Line length**: 100 characters maximum (Black formatter enforced)
+- **Complexity**: Cyclomatic complexity ≤ 10 per function
 
-## Development Commands
-
-### Quick Start
-```powershell
-# Start infrastructure
-docker-compose up -d postgres redis ollama chromadb
-
-# Verify dependencies
-.\scripts\test-service-dependencies.ps1
-
-# Build and start services
-.\scripts\docker-build-optimized.ps1 -Parallel
-docker-compose up -d
-
-# Verify API Gateway
-.\scripts\test-api-gateway.ps1
-```
-
-### Health Verification
-```bash
-curl http://localhost/health                    # Nginx
-curl http://localhost/api/v1/auth/health       # Auth Service
-curl http://localhost/api/v1/creators/health   # Creator Hub
-curl http://localhost/api/v1/ai/health         # AI Engine
-curl http://localhost/api/v1/channels/health   # Channel Service
-```
-
-## Code Quality Standards
-
-### Mandatory Requirements
-- **Cyclomatic Complexity**: ≤ 10 per function
-- **Test Coverage**: ≥ 80%
-- **Type Hints**: Required for all functions
-- **Async Patterns**: Use async/await for all I/O operations
-- **Pydantic Models**: Required for request/response validation
-
-### Pre-commit Tools
-- **Black**: Code formatting (100 char line length)
-- **isort**: Import sorting
-- **Ruff**: Fast linting
-- **Mypy**: Type checking
-- **Bandit**: Security scanning
-
-## File Structure Conventions
+## Project Structure
 
 ### Service Organization
 ```
 services/{service-name}/
-├── routes/          # FastAPI route handlers
-├── models/          # Service-specific models
-├── dependencies/    # FastAPI dependencies
+├── routes/          # FastAPI endpoint definitions
+├── models/          # Service-specific Pydantic models
+├── dependencies/    # FastAPI dependency injection
 └── __init__.py
 ```
 
-### Shared Components
+### Shared Components (Use First)
 ```
 shared/
-├── models/          # Database models (SQLAlchemy)
-├── utils/           # Common utilities
-├── cache/           # Redis caching utilities
-├── config/          # Configuration management
-└── validators/      # Pydantic validators
+├── models/          # SQLAlchemy database models (multi-tenant)
+├── utils/           # Common utility functions
+├── cache/           # Redis operations and patterns
+├── config/          # Environment configuration
+└── validators/      # Reusable Pydantic validators
 ```
 
-## Documentation Structure
-- `docs/01-product/`: Business requirements
-- `docs/02-architecture/`: Technical architecture
-- `docs/03-api-specifications/`: API documentation
-- `docs/07-development-guidelines/`: Development standards
+## Development Workflow
 
-## Key Implementation Notes
-- Project uses **FastAPI** with **SQLAlchemy 2.0** async patterns
-- All services are **containerized** with optimized Docker builds
-- **Multi-tenant isolation** is enforced at the database level with RLS
-- **AI services** use local Ollama deployment for privacy
-- **API Gateway** handles routing, rate limiting, and CORS
-- **Quality gates** are automated via pre-commit hooks and CI/CD
+### Local Development Setup
+```powershell
+# Start infrastructure services
+docker-compose up -d postgres redis ollama chromadb
+
+# Build and start application services
+.\scripts\docker-build-optimized.ps1 -Parallel
+docker-compose up -d
+
+# Verify all services are healthy
+.\scripts\test-api-gateway.ps1
+```
+
+### Service Health Verification
+- **Gateway**: `http://localhost/health`
+- **Auth**: `http://localhost/api/v1/auth/health`
+- **Creator Hub**: `http://localhost/api/v1/creators/health`
+- **AI Engine**: `http://localhost/api/v1/ai/health`
+- **Channels**: `http://localhost/api/v1/channels/health`
+
+## AI/ML Implementation Standards
+
+### Model Management
+- **Version tracking**: Use model registry for all AI models
+- **Graceful degradation**: Implement fallbacks when AI services fail
+- **Tenant isolation**: Namespace all embeddings and conversations by tenant ID
+- **Prompt versioning**: Use versioned templates with v1 fallback
+
+### Integration Requirements
+- **Privacy-first**: Local Ollama deployment (no external API calls)
+- **Vector storage**: ChromaDB for embeddings with tenant isolation
+- **Async operations**: All AI calls must be non-blocking
+- **Error handling**: Proper HTTP status codes for AI service failures
+
+## Implementation Checklist
+
+Before writing any code:
+1. **Search existing**: Check `shared/` and similar services for existing functionality
+2. **Follow patterns**: Match established service structure and naming conventions
+3. **Async first**: Use async/await for all I/O operations
+4. **Multi-tenant**: Implement RLS context for all database operations
+5. **Type safety**: Add comprehensive type hints and Pydantic models
+6. **Error handling**: Use appropriate HTTP status codes and structured exceptions
+7. **Environment config**: Never hardcode values, use environment variables
+8. **Test isolation**: Verify multi-tenant data separation in tests

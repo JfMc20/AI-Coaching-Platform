@@ -5,6 +5,7 @@ Async SQLAlchemy setup with connection pooling and multi-tenant support
 
 import os
 import logging
+import subprocess
 from typing import AsyncGenerator, Optional
 from contextlib import asynccontextmanager
 
@@ -21,6 +22,30 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     """Database manager with connection pooling and health checks"""
     
+    def _parse_int_env(self, env_var: str, default: int) -> int:
+        """
+        Parse integer from environment variable with validation
+        
+        Args:
+            env_var: Environment variable name
+            default: Default value if parsing fails
+            
+        Returns:
+            Parsed integer or default value
+        """
+        try:
+            value = os.getenv(env_var)
+            if value is None:
+                return default
+            parsed = int(value)
+            if parsed <= 0:
+                logger.warning(f"Invalid {env_var} value '{value}' (must be positive), using default {default}")
+                return default
+            return parsed
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid {env_var} value '{value}', using default {default}")
+            return default
+    
     def __init__(self):
         # Get database URL from environment
         self.database_url = os.getenv("DATABASE_URL")
@@ -33,18 +58,22 @@ class DatabaseManager:
         elif not self.database_url.startswith("postgresql+asyncpg://"):
             raise ValueError("DATABASE_URL must use postgresql:// or postgresql+asyncpg:// scheme")
         
+        # Parse pool settings from environment with validation
+        pool_size = self._parse_int_env("AUTH_DB_POOL_SIZE", 20)
+        max_overflow = self._parse_int_env("AUTH_DB_MAX_OVERFLOW", 30)
+        
         # Create async engine with optimized settings
         self.engine = create_async_engine(
             self.database_url,
             # Connection pool settings
-            pool_size=20,           # Number of connections to maintain
-            max_overflow=30,        # Additional connections beyond pool_size
-            pool_pre_ping=True,     # Validate connections before use
-            pool_recycle=3600,      # Recycle connections after 1 hour
+            pool_size=pool_size,        # Number of connections to maintain
+            max_overflow=max_overflow,  # Additional connections beyond pool_size
+            pool_pre_ping=True,         # Validate connections before use
+            pool_recycle=3600,          # Recycle connections after 1 hour
             
             # Performance settings
             echo=os.getenv("SQL_ECHO", "false").lower() == "true",
-            future=True,
+            # Note: future=True is deprecated in SQLAlchemy 2.x and removed
             
             # Connection settings
             connect_args={
@@ -60,8 +89,8 @@ class DatabaseManager:
             self.engine,
             class_=AsyncSession,
             expire_on_commit=False,
-            autoflush=True,
-            autocommit=False
+            autoflush=True
+            # Note: autocommit parameter is not valid in SQLAlchemy 2.x
         )
         
         # Setup event listeners
@@ -171,6 +200,34 @@ async def set_tenant_context(creator_id: str, db: AsyncSession):
         raise
 
 
+async def run_alembic_migrations():
+    """
+    Run Alembic migrations programmatically
+    
+    Returns:
+        bool: True if migrations ran successfully
+    """
+    try:
+        # Run alembic upgrade head
+        result = subprocess.run(
+            ["alembic", "upgrade", "head"],
+            capture_output=True,
+            text=True,
+            cwd=os.path.dirname(os.path.dirname(os.path.dirname(__file__)))  # Go to project root
+        )
+        
+        if result.returncode == 0:
+            logger.info("Alembic migrations completed successfully")
+            return True
+        else:
+            logger.error(f"Alembic migrations failed: {result.stderr}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Failed to run Alembic migrations: {e}")
+        return False
+
+
 async def init_database():
     """
     Initialize database schema and Row Level Security policies
@@ -179,9 +236,20 @@ async def init_database():
     try:
         manager = get_db_manager()
         
-        # Create tables
-        async with manager.engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        # Check if we should auto-create tables (development only)
+        auto_create = os.getenv("DB_AUTO_CREATE", "false").lower() == "true"
+        
+        if auto_create:
+            logger.warning("DB_AUTO_CREATE is enabled - creating tables directly (development only)")
+            # Create tables directly (development only)
+            async with manager.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        else:
+            # Run Alembic migrations (production approach)
+            logger.info("Running Alembic migrations...")
+            migration_success = await run_alembic_migrations()
+            if not migration_success:
+                raise RuntimeError("Database migrations failed")
         
         # Setup Row Level Security policies
         await setup_rls_policies()
@@ -206,8 +274,19 @@ async def setup_rls_policies():
             ) THEN
                 ALTER TABLE refresh_tokens ENABLE ROW LEVEL SECURITY;
                 CREATE POLICY tenant_isolation ON refresh_tokens
-                    FOR ALL TO authenticated_user
-                    USING (creator_id = current_setting('app.current_creator_id')::uuid);
+                    FOR ALL TO PUBLIC
+                    USING (
+                        creator_id = COALESCE(
+                            NULLIF(current_setting('app.current_creator_id', true), '')::uuid,
+                            NULL
+                        )
+                    )
+                    WITH CHECK (
+                        creator_id = COALESCE(
+                            NULLIF(current_setting('app.current_creator_id', true), '')::uuid,
+                            NULL
+                        )
+                    );
             END IF;
         END $$;
         """,
@@ -221,8 +300,19 @@ async def setup_rls_policies():
             ) THEN
                 ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
                 CREATE POLICY tenant_isolation ON user_sessions
-                    FOR ALL TO authenticated_user
-                    USING (creator_id = current_setting('app.current_creator_id')::uuid);
+                    FOR ALL TO PUBLIC
+                    USING (
+                        creator_id = COALESCE(
+                            NULLIF(current_setting('app.current_creator_id', true), '')::uuid,
+                            NULL
+                        )
+                    )
+                    WITH CHECK (
+                        creator_id = COALESCE(
+                            NULLIF(current_setting('app.current_creator_id', true), '')::uuid,
+                            NULL
+                        )
+                    );
             END IF;
         END $$;
         """,
@@ -236,8 +326,19 @@ async def setup_rls_policies():
             ) THEN
                 ALTER TABLE password_reset_tokens ENABLE ROW LEVEL SECURITY;
                 CREATE POLICY tenant_isolation ON password_reset_tokens
-                    FOR ALL TO authenticated_user
-                    USING (creator_id = current_setting('app.current_creator_id')::uuid);
+                    FOR ALL TO PUBLIC
+                    USING (
+                        creator_id = COALESCE(
+                            NULLIF(current_setting('app.current_creator_id', true), '')::uuid,
+                            NULL
+                        )
+                    )
+                    WITH CHECK (
+                        creator_id = COALESCE(
+                            NULLIF(current_setting('app.current_creator_id', true), '')::uuid,
+                            NULL
+                        )
+                    );
             END IF;
         END $$;
         """,
@@ -251,10 +352,13 @@ async def setup_rls_policies():
             ) THEN
                 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
                 CREATE POLICY tenant_isolation ON audit_logs
-                    FOR SELECT TO authenticated_user
+                    FOR SELECT TO PUBLIC
                     USING (
-                        creator_id = current_setting('app.current_creator_id')::uuid
-                        OR current_setting('app.current_creator_id') = 'system'
+                        creator_id = COALESCE(
+                            NULLIF(current_setting('app.current_creator_id', true), '')::uuid,
+                            NULL
+                        )
+                        OR COALESCE(current_setting('app.current_creator_id', true), '') = 'system'
                     );
             END IF;
         END $$;

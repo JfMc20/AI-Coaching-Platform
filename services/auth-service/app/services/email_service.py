@@ -3,6 +3,7 @@ Email Service
 Handles sending emails for password reset and other authentication flows
 """
 
+import hashlib
 import os
 import logging
 from typing import Optional
@@ -13,6 +14,39 @@ logger = logging.getLogger(__name__)
 class EmailService:
     """Service for sending authentication-related emails"""
     
+    def _parse_smtp_port(self, port_str: str) -> int:
+        """
+        Safely parse SMTP port from environment variable
+        
+        Args:
+            port_str: Port value from environment variable
+            
+        Returns:
+            Valid port number (1-65535) or default 587
+        """
+        try:
+            port = int(port_str)
+            if 1 <= port <= 65535:
+                return port
+            else:
+                logger.warning(f"SMTP port {port} is out of valid range (1-65535), using default 587")
+                return 587
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid SMTP port value '{port_str}', using default 587")
+            return 587
+    
+    def _generate_token_hash(self, token: str) -> str:
+        """
+        Generate a safe hash of the token for logging purposes
+        
+        Args:
+            token: The reset token
+            
+        Returns:
+            SHA-256 hex digest of the token
+        """
+        return hashlib.sha256(token.encode('utf-8')).hexdigest()
+    
     def __init__(self):
         # Email configuration
         self.frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
@@ -22,7 +56,7 @@ class EmailService:
         
         # SMTP configuration (for future implementation)
         self.smtp_host = os.getenv("SMTP_HOST", "")
-        self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        self.smtp_port = self._parse_smtp_port(os.getenv("SMTP_PORT", "587"))
         self.smtp_user = os.getenv("SMTP_USER", "")
         self.smtp_password = os.getenv("SMTP_PASSWORD", "")
         self.smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
@@ -43,10 +77,13 @@ class EmailService:
             # Construct reset URL
             reset_url = f"{self.frontend_url}/reset-password?token={reset_token}"
             
+            # Generate safe token hash for logging
+            token_hash = self._generate_token_hash(reset_token)
+            
             # Log email details (in a real implementation, this would be sent via email service)
             logger.info("Password reset email prepared", extra={
                 "email": email,
-                "reset_url": reset_url,
+                "token_hash": token_hash,  # Safe hash instead of raw token
                 "client_ip": client_ip
             })
             
@@ -73,13 +110,16 @@ class EmailService:
                 logger.info("Email service is disabled. Would send email with the following details:")
                 logger.info(f"To: {email}")
                 logger.info(f"Subject: Password Reset Request")
-                logger.info(f"Body: Click the following link to reset your password: {reset_url}")
-                logger.info(f"Reset token (first 16 chars): {reset_token[:16]}...")
+                logger.info(f"Body: Click the following link to reset your password: [RESET_URL_REDACTED]")
+                logger.info(f"Reset token hash (SHA-256): {token_hash}")
                 return True
                 
         except Exception as e:
+            # Generate safe token hash for error logging
+            token_hash = self._generate_token_hash(reset_token)
             logger.error("Failed to send password reset email", extra={
                 "email": email,
+                "token_hash": token_hash,  # Safe hash for traceability
                 "error": str(e),
                 "client_ip": client_ip
             })

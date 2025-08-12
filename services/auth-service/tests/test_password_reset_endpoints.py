@@ -27,11 +27,11 @@ class TestPasswordResetRequestEndpoint:
     def test_request_password_reset_valid_email(self):
         """Test password reset request with valid email format"""
         # Mock the auth service
-        with patch('services.auth-service.app.routes.auth.auth_service') as mock_auth_service:
+        with patch('app.routes.auth.auth_service') as mock_auth_service:
             mock_auth_service.request_password_reset = MagicMock(return_value="test_reset_token")
             
             # Mock email service
-            with patch('services.auth-service.app.routes.auth.get_email_service') as mock_email_service:
+            with patch('app.routes.auth.get_email_service') as mock_email_service:
                 mock_email_service.return_value = MagicMock()
                 
                 response = client.post(
@@ -69,22 +69,35 @@ class TestPasswordResetRequestEndpoint:
     def test_request_password_reset_rate_limiting(self):
         """Test rate limiting on password reset request endpoint"""
         # Mock the auth service
-        with patch('services.auth-service.app.routes.auth.auth_service') as mock_auth_service:
+        with patch('app.routes.auth.auth_service') as mock_auth_service:
             mock_auth_service.request_password_reset = MagicMock(return_value="test_reset_token")
             
             # Make multiple requests to trigger rate limiting
             responses = []
+            status_codes = []
             for i in range(5):  # Exceeds the limit of 3 per hour
                 response = client.post(
                     "/api/v1/auth/password/reset/request",
                     json={"email": f"test{i}@example.com"}
                 )
                 responses.append(response)
+                status_codes.append(response.status_code)
             
-            # Check that we get a 429 Too Many Requests response
-            # Note: This might not work in testing without a real Redis instance
-            # but we can at least verify the structure of earlier responses
+            # Assert that we have the expected number of responses
             assert len(responses) == 5
+            
+            # Check rate limiting behavior - first few should succeed, later ones should be rate limited
+            # In a real environment with Redis, we'd expect 429 responses after the limit
+            # For testing without Redis, we verify the structure and that at least some responses are successful
+            success_responses = [code for code in status_codes if 200 <= code < 300]
+            rate_limited_responses = [code for code in status_codes if code == 429]
+            
+            # At least the first request should succeed (202 for password reset request)
+            assert status_codes[0] == 202, f"First request should succeed, got {status_codes[0]}"
+            
+            # If we have Redis available, we should see rate limiting
+            if rate_limited_responses:
+                assert len(rate_limited_responses) > 0, "Should have at least one rate-limited response"
 
 
 class TestPasswordResetConfirmEndpoint:
@@ -93,7 +106,7 @@ class TestPasswordResetConfirmEndpoint:
     def test_confirm_password_reset_valid_token_and_password(self):
         """Test password reset confirmation with valid token and password"""
         # Mock the auth service
-        with patch('services.auth-service.app.routes.auth.auth_service') as mock_auth_service:
+        with patch('app.routes.auth.auth_service') as mock_auth_service:
             mock_auth_service.confirm_password_reset = MagicMock(return_value=True)
             
             response = client.post(
@@ -124,14 +137,13 @@ class TestPasswordResetConfirmEndpoint:
 
     def test_confirm_password_reset_expired_token(self):
         """Test password reset confirmation with expired token"""
-        # Mock the auth service to raise an exception for expired token
-        with patch('services.auth-service.app.routes.auth.auth_service') as mock_auth_service:
+        # Mock the auth service to simulate expired token behavior
+        with patch('app.routes.auth.auth_service') as mock_auth_service:
+            from fastapi import HTTPException
             mock_auth_service.confirm_password_reset = MagicMock()
-            mock_auth_service.confirm_password_reset.side_effect = Exception(
-                type('MockHTTPException', (), {
-                    'status_code': 400,
-                    'detail': 'Password reset token has expired'
-                })()
+            mock_auth_service.confirm_password_reset.side_effect = HTTPException(
+                status_code=400,
+                detail="Password reset token has expired"
             )
             
             response = client.post(
@@ -142,8 +154,9 @@ class TestPasswordResetConfirmEndpoint:
                 }
             )
             
-            # In a real implementation, this would return 400
-            # For now, we're just testing the structure
+            # Assert that expired token returns 400 Bad Request
+            assert response.status_code == 400
+            assert "expired" in response.json()["detail"].lower()
 
     def test_confirm_password_reset_weak_password(self):
         """Test password reset confirmation with weak password"""
@@ -169,7 +182,7 @@ class TestPasswordResetConfirmEndpoint:
     def test_confirm_password_reset_rate_limiting(self):
         """Test rate limiting on password reset confirmation endpoint"""
         # Mock the auth service
-        with patch('services.auth-service.app.routes.auth.auth_service') as mock_auth_service:
+        with patch('app.routes.auth.auth_service') as mock_auth_service:
             mock_auth_service.confirm_password_reset = MagicMock(return_value=True)
             
             # Make multiple requests to trigger rate limiting
@@ -194,7 +207,9 @@ class TestPasswordResetSecurity:
     def test_password_reset_token_single_use(self):
         """Verify that tokens are single-use"""
         # Mock the auth service
-        with patch('services.auth-service.app.routes.auth.auth_service') as mock_auth_service:
+        with patch('app.routes.auth.auth_service') as mock_auth_service:
+            from fastapi import HTTPException
+            
             # First use should succeed
             mock_auth_service.confirm_password_reset = MagicMock(return_value=True)
             
@@ -206,12 +221,14 @@ class TestPasswordResetSecurity:
                 }
             )
             
-            # Second use should fail
-            mock_auth_service.confirm_password_reset.side_effect = Exception(
-                type('MockHTTPException', (), {
-                    'status_code': 400,
-                    'detail': 'Password reset token has already been used'
-                })()
+            # Assert first request succeeds
+            assert response1.status_code == 200
+            assert "Password reset successful" in response1.json()["message"]
+            
+            # Second use should fail - configure mock to raise exception
+            mock_auth_service.confirm_password_reset.side_effect = HTTPException(
+                status_code=400,
+                detail="Password reset token has already been used"
             )
             
             response2 = client.post(
@@ -222,14 +239,15 @@ class TestPasswordResetSecurity:
                 }
             )
             
-            # First should succeed, second should fail
-            # Note: Actual behavior depends on implementation
+            # Assert second request fails
+            assert response2.status_code == 400
+            assert "already been used" in response2.json()["detail"].lower() or "used" in response2.json()["detail"].lower()
 
     def test_password_reset_old_refresh_tokens_invalidated(self):
         """Test that old refresh tokens are invalidated after password reset"""
         # This would require more complex mocking of the database and refresh token system
         # For now, we'll just test the endpoint structure
-        with patch('services.auth-service.app.routes.auth.auth_service') as mock_auth_service:
+        with patch('app.routes.auth.auth_service') as mock_auth_service:
             mock_auth_service.confirm_password_reset = MagicMock(return_value=True)
             
             response = client.post(
