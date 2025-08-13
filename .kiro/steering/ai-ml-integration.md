@@ -302,15 +302,16 @@ class OllamaClient:
         payload = {"name": model}
         
         try:
-            response = await self.client.post("/api/pull", json=payload)
-            response.raise_for_status()
-            
-            # Ollama pull is streaming, wait for completion
-            async for line in response.aiter_lines():
-                if line:
-                    data = json.loads(line)
-                    if data.get("status") == "success":
-                        return True
+            # Make streaming request for model pull
+            async with self.client.stream("POST", "/api/pull", json=payload) as response:
+                response.raise_for_status()
+                
+                # Ollama pull is streaming, wait for completion
+                async for line in response.aiter_lines():
+                    if line:
+                        data = json.loads(line)
+                        if data.get("status") == "success":
+                            return True
             
             return False
             
@@ -678,18 +679,18 @@ class ConversationManager:
                 }
             )
             
-            # Add to Redis list
-            pipe = self.redis.pipeline()
-            pipe.rpush(key, user_msg.json())
-            pipe.rpush(key, ai_msg.json())
-            
-            # Trim to max context size
-            pipe.ltrim(key, -self.max_context_messages, -1)
-            
-            # Set expiration
-            pipe.expire(key, self.context_ttl)
-            
-            await pipe.execute()
+            # Add to Redis list using async pipeline
+            async with self.redis.pipeline() as pipe:
+                await pipe.rpush(key, user_msg.json())
+                await pipe.rpush(key, ai_msg.json())
+                
+                # Trim to max context size
+                await pipe.ltrim(key, -self.max_context_messages, -1)
+                
+                # Set expiration
+                await pipe.expire(key, self.context_ttl)
+                
+                await pipe.execute()
             
             logger.info(f"Added exchange to conversation {conversation_id}")
             return True

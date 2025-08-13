@@ -16,6 +16,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,15 @@ class JWTManager:
     """Manages JWT token creation, validation, and rotation."""
     
     def __init__(self, private_key_path: str, public_key_path: str):
-        self.algorithm = "RS256"
+        # Configure JWT algorithm from environment with validation
+        configured_algorithm = os.environ.get('JWT_ALGORITHM', 'RS256')
+        allowed_algorithms = ['RS256', 'ES256', 'HS256']
+        
+        if configured_algorithm not in allowed_algorithms:
+            logger.warning(f"Invalid JWT algorithm '{configured_algorithm}', using RS256")
+            configured_algorithm = 'RS256'
+        
+        self.algorithm = configured_algorithm
         self.access_token_expire_minutes = 15
         self.refresh_token_expire_days = 30
         self.issuer = "coaching-platform-auth"
@@ -624,8 +633,27 @@ class RateLimiter:
             
         except Exception as e:
             logger.exception(f"Rate limiting error: {e}")
-            # Fail open - allow request if rate limiting fails
-            return True, {"error": "Rate limiting unavailable"}
+            
+            # Configure fail behavior from environment
+            fail_mode = os.environ.get('RATE_LIMIT_FAIL_MODE', 'open').lower()
+            
+            if fail_mode == 'closed':
+                # Fail closed - reject request when rate limiting is unavailable
+                logger.error(f"Rate limiting unavailable, rejecting request for {identifier}")
+                # Trigger alert/metric for monitoring
+                self._emit_rate_limit_failure_metric(identifier, str(e))
+                return False, {
+                    "error": "Rate limiting service unavailable", 
+                    "fail_mode": "closed"
+                }
+            else:
+                # Fail open - allow request when rate limiting is unavailable
+                logger.warning(f"Rate limiting unavailable, allowing request for {identifier}")
+                self._emit_rate_limit_failure_metric(identifier, str(e))
+                return True, {
+                    "error": "Rate limiting unavailable", 
+                    "fail_mode": "open"
+                }
     
     async def get_rate_limit_status(
         self,
@@ -680,6 +708,26 @@ class RateLimiter:
         except Exception as e:
             logger.exception(f"Rate limit reset error: {e}")
             return False
+    
+    def _emit_rate_limit_failure_metric(self, identifier: str, error: str) -> None:
+        """Emit metric/alert for rate limiting failures."""
+        try:
+            # Log structured error for monitoring systems
+            logger.error(
+                "Rate limiting service failure",
+                extra={
+                    "identifier": identifier,
+                    "error": error,
+                    "metric": "rate_limit_failure",
+                    "alert": True
+                }
+            )
+            
+            # TODO: Integrate with your monitoring system (Prometheus, DataDog, etc.)
+            # Example: self.metrics_client.increment('rate_limit.failures', tags={'identifier': identifier})
+            
+        except Exception as e:
+            logger.exception(f"Failed to emit rate limit failure metric: {e}")
 ```
 
 ## Data Encryption & Protection

@@ -265,9 +265,9 @@ class MessageProcessor:
                 await self._send_error(websocket, "Empty message not allowed")
                 return
             
-            # Check rate limiting
+            # Check rate limiting (identifier first: creator_id, action, session_id)
             if not await self.rate_limiter.check_rate_limit(
-                session_id, "chat", creator_id
+                creator_id, "chat", session_id
             ):
                 await self._send_error(websocket, "Rate limit exceeded")
                 return
@@ -352,13 +352,25 @@ class MessageProcessor:
 Implement production-ready WebSocket endpoint:
 
 ```python
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query
 from fastapi.responses import HTMLResponse
+from typing import Optional
 import json
 import uuid
 import logging
 
 logger = logging.getLogger(__name__)
+
+async def validate_websocket_token(token: str) -> Optional[Dict[str, Any]]:
+    """Validate WebSocket authentication token."""
+    try:
+        # TODO: Implement your JWT validation logic here
+        # This should validate the token and return claims
+        # Example: return jwt_manager.verify_token(token)
+        pass
+    except Exception as e:
+        logger.exception(f"Token validation failed: {e}")
+        return None
 
 app = FastAPI()
 websocket_manager = WebSocketManager()
@@ -368,15 +380,35 @@ message_processor = MessageProcessor(ai_engine_client, websocket_manager, rate_l
 async def websocket_endpoint(
     websocket: WebSocket,
     creator_id: str,
-    session_id: Optional[str] = None
+    session_id: Optional[str] = None,
+    token: Optional[str] = Query(None)
 ):
-    """WebSocket endpoint for widget connections."""
+    """WebSocket endpoint for widget connections with authentication."""
     
-    # Generate session ID if not provided
-    if not session_id:
-        session_id = str(uuid.uuid4())
-    
-    connection_id = f"{creator_id}_{session_id}"
+    # Authenticate connection before accepting
+    try:
+        if not token:
+            await websocket.close(code=4001, reason="Authentication token required")
+            return
+        
+        # Validate token and extract claims
+        auth_claims = await validate_websocket_token(token)
+        if not auth_claims or auth_claims.get("creator_id") != creator_id:
+            await websocket.close(code=4003, reason="Invalid or unauthorized token")
+            return
+        
+        # Generate session ID if not provided
+        if not session_id:
+            session_id = str(uuid.uuid4())
+        
+        connection_id = f"{creator_id}_{session_id}"
+        
+        logger.info(f"Authenticated WebSocket connection: {connection_id}")
+        
+    except Exception as e:
+        logger.exception(f"WebSocket authentication failed: {e}")
+        await websocket.close(code=4003, reason="Authentication failed")
+        return
     
     try:
         # Establish connection
@@ -456,13 +488,28 @@ class ConnectionHealthMonitor:
         self._monitoring_task = None
     
     async def start_monitoring(self):
-        """Start connection health monitoring."""
+        """Start connection health monitoring with proper error handling."""
         if self._monitoring_task is None:
-            self._monitoring_task = asyncio.create_task(self._monitor_connections())
-            logger.info("Connection health monitoring started")
+            try:
+                self._monitoring_task = asyncio.create_task(self._monitor_connections())
+                
+                # Add callback to log uncaught exceptions
+                def task_done_callback(task):
+                    if task.exception():
+                        logger.exception(f"Connection monitoring task failed: {task.exception()}")
+                
+                self._monitoring_task.add_done_callback(task_done_callback)
+                logger.info("Connection health monitoring started")
+                
+            except Exception as e:
+                logger.exception(f"Failed to start connection monitoring: {e}")
+                if self._monitoring_task:
+                    self._monitoring_task.cancel()
+                    self._monitoring_task = None
+                raise
     
     async def stop_monitoring(self):
-        """Stop connection health monitoring."""
+        """Stop connection health monitoring with proper cleanup."""
         if self._monitoring_task:
             self._monitoring_task.cancel()
             try:

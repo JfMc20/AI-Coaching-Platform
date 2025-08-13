@@ -10,8 +10,10 @@ fileMatchPattern: ['.github/workflows/*.yml', '.github/workflows/*.yaml', 'docke
 Configure these secrets in Repository Settings → Secrets and variables → Actions:
 
 ### Testing Environment Secrets
-- **TEST_POSTGRES_PASSWORD**: `postgres` (PostgreSQL test database password)
-- **TEST_JWT_SECRET_KEY**: `test-secret-key-for-testing-only` (JWT signing key for tests)
+- **TEST_POSTGRES_PASSWORD**: `<POSTGRES_PASSWORD_PLACEHOLDER>` (PostgreSQL test database password)
+- **TEST_JWT_SECRET_KEY**: `<JWT_SECRET_PLACEHOLDER>` (JWT signing key for tests)
+
+> **Security Note**: Never commit real secret values to version control. Use environment variables or a secrets manager for actual deployments. The placeholders above should be replaced with secure values in your GitHub repository secrets.
 
 ### Production Environment Secrets
 - **POSTGRES_PASSWORD**: Strong random password for production database

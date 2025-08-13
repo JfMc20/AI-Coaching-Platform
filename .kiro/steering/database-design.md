@@ -106,8 +106,17 @@ CREATE TABLE widget_configs (
     }'::jsonb,
     behavior JSONB DEFAULT '{
         "auto_open": false,
-        "greeting_message": "¡Hola! ¿En qué puedo ayudarte?",
-        "placeholder_text": "Escribe tu mensaje...",
+        "language": "en",
+        "messages": {
+            "en": {
+                "greeting_message": "Hello! How can I help you?",
+                "placeholder_text": "Type your message..."
+            },
+            "es": {
+                "greeting_message": "¡Hola! ¿En qué puedo ayudarte?",
+                "placeholder_text": "Escribe tu mensaje..."
+            }
+        },
         "show_typing_indicator": true,
         "response_delay_ms": 1000
     }'::jsonb,
@@ -252,6 +261,7 @@ Implement proper async database connection handling:
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import NullPool
+from sqlalchemy import text, func
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 import logging
@@ -352,7 +362,7 @@ Implement repository pattern for clean data access:
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_, or_
+from sqlalchemy import select, update, delete, and_, or_, func
 from sqlalchemy.orm import selectinload
 from datetime import datetime
 
