@@ -1,0 +1,61 @@
+# Test runner Dockerfile for the AI coaching platform
+# This container is used to run tests in CI/CD and local development
+
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    ENVIRONMENT=testing
+
+# Install system dependencies with minimal footprint
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    git \
+    postgresql-client \
+    redis-tools \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create app directory
+WORKDIR /app
+
+# Copy entire project first to handle local package references
+COPY . .
+
+# Install Python dependencies using python -m pip for consistency
+RUN python -m pip install --upgrade pip && \
+    python -m pip install -r requirements.txt && \
+    python -m pip install -r requirements-test.txt
+
+# Create non-root user for security
+RUN groupadd -r testuser && useradd -r -g testuser testuser
+
+# Create directories for test outputs and set proper ownership
+RUN mkdir -p /app/test-results /app/coverage /app/logs && \
+    chown -R testuser:testuser /app/test-results /app/coverage /app/logs /app
+
+# Switch to non-root user
+USER testuser
+
+# Set up test environment
+ENV PYTHONPATH=/app \
+    DATABASE_URL=postgresql://postgres:postgres@postgres-test:5432/ai_platform_test \
+    REDIS_URL=redis://redis-test:6379/0 \
+    JWT_SECRET_KEY=test-secret-key-for-testing-only \
+    ENVIRONMENT=testing \
+    DEBUG=false \
+    LOG_LEVEL=INFO
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)"
+
+# Create volumes for test outputs
+VOLUME ["/app/test-results", "/app/coverage", "/app/logs"]
+
+# Default command runs all tests
+CMD ["pytest", "--cov=shared", "--cov=services", "--cov-report=html:/app/coverage", "--junit-xml=/app/test-results/junit.xml", "-v"]

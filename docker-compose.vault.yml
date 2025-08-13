@@ -1,6 +1,7 @@
 version: '3.8'
 
 # Vault configuration for development
+# This configuration uses centralized environment constants from shared/config/env_constants.py
 # This is a basic setup for development only - NOT for production use
 
 services:
@@ -10,9 +11,9 @@ services:
     ports:
       - "8200:8200"
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: dev-root-token
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_TOKEN:-dev-root-token}
       VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
-      VAULT_ADDR: http://0.0.0.0:8200
+      VAULT_ADDR: ${VAULT_URL:-http://0.0.0.0:8200}
     cap_add:
       - IPC_LOCK
     volumes:
@@ -20,38 +21,38 @@ services:
       - ./scripts/vault-init.sh:/vault/init/vault-init.sh:ro
     command: |
       sh -c '
-        vault server -dev -dev-root-token-id=dev-root-token -dev-listen-address=0.0.0.0:8200 &
+        vault server -dev -dev-root-token-id=${VAULT_TOKEN:-dev-root-token} -dev-listen-address=0.0.0.0:8200 &
         sleep 5
         export VAULT_ADDR=http://localhost:8200
-        export VAULT_TOKEN=dev-root-token
+        export VAULT_TOKEN=${VAULT_TOKEN:-dev-root-token}
         
-        # Enable KV secrets engine
-        vault secrets enable -path=secret kv-v2
+        # Enable KV secrets engine using centralized mount point
+        vault secrets enable -path=${VAULT_MOUNT_POINT:-secret} kv-v2
         
-        # Create basic development secrets
-        vault kv put secret/mvp-coaching/database \
-          username=postgres \
-          password=postgres \
+        # Create development secrets using centralized environment constants
+        vault kv put ${VAULT_MOUNT_POINT:-secret}/mvp-coaching/database \
+          username=${POSTGRES_USER:-postgres} \
+          password=${POSTGRES_PASSWORD:-postgres} \
           host=postgres \
           port=5432 \
-          database=mvp_coaching
+          database=${POSTGRES_DB:-ai_platform_dev}
         
-        vault kv put secret/mvp-coaching/redis \
-          url=redis://redis:6379
+        vault kv put ${VAULT_MOUNT_POINT:-secret}/mvp-coaching/redis \
+          url=${REDIS_URL:-redis://redis:6379}
         
-        vault kv put secret/mvp-coaching/jwt \
-          secret_key=dev-jwt-secret-key-change-in-production \
-          algorithm=HS256 \
-          access_token_expire_minutes=1440 \
-          refresh_token_expire_days=30
+        vault kv put ${VAULT_MOUNT_POINT:-secret}/mvp-coaching/jwt \
+          secret_key=${JWT_SECRET_KEY:-dev-secret-key-change-in-production} \
+          algorithm=${JWT_ALGORITHM:-HS256} \
+          access_token_expire_minutes=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30} \
+          refresh_token_expire_days=${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-7}
         
-        vault kv put secret/mvp-coaching/ai \
-          ollama_url=http://ollama:11434 \
-          chromadb_url=http://chromadb:8000 \
-          embedding_model=nomic-embed-text \
-          chat_model=llama2:7b-chat
+        vault kv put ${VAULT_MOUNT_POINT:-secret}/mvp-coaching/ai \
+          ollama_url=${OLLAMA_URL:-http://ollama:11434} \
+          chromadb_url=${CHROMADB_URL:-http://chromadb:8000} \
+          embedding_model=${EMBEDDING_MODEL:-nomic-embed-text} \
+          chat_model=${CHAT_MODEL:-llama3.2}
         
-        echo "✅ Vault development secrets initialized"
+        echo "✅ Vault development secrets initialized using centralized constants"
         wait
       '
     healthcheck:

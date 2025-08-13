@@ -1,6 +1,10 @@
 """
 Configuration management for MVP Coaching AI Platform
 Handles environment variables, secrets, and configuration validation
+
+This module has been updated to use centralized environment constants from env_constants.py.
+All environment variable names and defaults are now sourced from the centralized system
+while maintaining backward compatibility with existing APIs.
 """
 
 import os
@@ -20,6 +24,22 @@ except ImportError:
         field_validator = lambda *args, **kwargs: lambda func: func
 from functools import lru_cache
 
+# Import centralized environment constants and helper functions
+from shared.config.env_constants import (
+    # Environment variable constants
+    DATABASE_URL, REDIS_URL, ENVIRONMENT, DEBUG, LOG_LEVEL,
+    CORS_ORIGINS, ALLOWED_HOSTS, RATE_LIMIT_PER_MINUTE, RATE_LIMIT_PER_HOUR,
+    JWT_SECRET_KEY, JWT_ALGORITHM, JWT_ACCESS_TOKEN_EXPIRE_MINUTES, JWT_REFRESH_TOKEN_EXPIRE_DAYS,
+    AUTH_SERVICE_URL, AI_ENGINE_SERVICE_URL, MAX_UPLOAD_SIZE, UPLOADS_DIR, SUPPORTED_FORMATS,
+    OLLAMA_URL, CHROMADB_URL, EMBEDDING_MODEL, CHAT_MODEL, CHROMA_SHARD_COUNT,
+    CHROMA_MAX_CONNECTIONS_PER_INSTANCE, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP,
+    WEBSOCKET_TIMEOUT, MAX_CONNECTIONS_PER_INSTANCE, HEARTBEAT_INTERVAL,
+    VAULT_URL, VAULT_TOKEN, VAULT_MOUNT_POINT, VAULT_ENABLED,
+    # Helper functions
+    get_env_value, get_environment_defaults, get_current_environment, validate_environment_variables,
+    REQUIRED_VARS_BY_SERVICE
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +48,7 @@ def validate_service_environment(required_vars: List[str], logger: Optional[logg
     """
     Centralized environment variable validation for services
     
+    Updated to use the centralized environment constants system for validation.
     Validates that all required environment variables are set and logs any missing variables.
     Raises RuntimeError with the same message format used by all services for backward compatibility.
     
@@ -50,9 +71,9 @@ def validate_service_environment(required_vars: List[str], logger: Optional[logg
     if not all(isinstance(var, str) and var.strip() for var in required_vars):
         raise ValueError("required_vars must contain only non-empty strings")
     
-    # Check for missing environment variables
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
-    if missing_vars:
+    # Use centralized validation function
+    is_valid, missing_vars = validate_environment_variables(required_vars)
+    if not is_valid:
         # Use service logger if provided, otherwise use a specific logger for env validation
         env_logger = logger if logger is not None else logging.getLogger('shared.config.env_validation')
         env_logger.error(f"Missing required environment variables: {missing_vars}")
@@ -67,6 +88,7 @@ def get_database_url_with_validation(
     """
     Centralized DATABASE_URL parsing, validation, and conversion
     
+    Updated to use the centralized DATABASE_URL constant from env_constants.
     Consolidates all DATABASE_URL handling logic from auth-service, migrations, and alembic.
     Handles URL validation, scheme normalization, and async/sync conversion.
     
@@ -81,8 +103,8 @@ def get_database_url_with_validation(
     Raises:
         ValueError: If URL is required but not found, or if URL has invalid scheme
     """
-    # Try environment variable first
-    database_url = os.getenv("DATABASE_URL")
+    # Try environment variable first using centralized constant
+    database_url = get_env_value(DATABASE_URL, fallback=False)
     
     # Fallback to config file if provided
     if not database_url and fallback_config is not None:
@@ -96,7 +118,7 @@ def get_database_url_with_validation(
     if not database_url:
         if required:
             raise ValueError(
-                "No database URL found. Please set the DATABASE_URL environment variable"
+                f"No database URL found. Please set the {DATABASE_URL} environment variable"
                 + (" or configure sqlalchemy.url in alembic.ini" if fallback_config else "")
             )
         return None
@@ -107,7 +129,7 @@ def get_database_url_with_validation(
     
     # Validate scheme before conversion
     if not (database_url.startswith("postgresql://") or database_url.startswith("postgresql+asyncpg://")):
-        raise ValueError("DATABASE_URL must use postgresql:// or postgresql+asyncpg:// scheme")
+        raise ValueError(f"{DATABASE_URL} must use postgresql:// or postgresql+asyncpg:// scheme")
     
     # Convert between sync and async URLs based on async_url parameter
     if async_url and database_url.startswith("postgresql://"):
@@ -119,26 +141,52 @@ def get_database_url_with_validation(
 
 
 class BaseConfig(BaseSettings):
-    """Base configuration class with common settings"""
+    """
+    Base configuration class with common settings
     
-    # Environment
-    environment: str = Field(default="development", env="ENVIRONMENT")
-    debug: bool = Field(default=False, env="DEBUG")
-    log_level: str = Field(default="INFO", env="LOG_LEVEL")
+    Updated to use centralized environment constants from env_constants.py.
+    All environment variable names are now sourced from the centralized system.
+    """
     
-    # Database
-    database_url: str = Field(..., env="DATABASE_URL")
+    # Environment - using centralized constants and defaults
+    environment: str = Field(
+        default=get_env_value(ENVIRONMENT, fallback=True) or "development",
+        env=ENVIRONMENT
+    )
+    debug: bool = Field(
+        default=(get_env_value(DEBUG, fallback=True) or "false").lower() == "true",
+        env=DEBUG
+    )
+    log_level: str = Field(
+        default=get_env_value(LOG_LEVEL, fallback=True) or "INFO",
+        env=LOG_LEVEL
+    )
     
-    # Redis
-    redis_url: str = Field(..., env="REDIS_URL")
+    # Database - using centralized constants
+    database_url: str = Field(..., env=DATABASE_URL)
     
-    # Security
-    cors_origins: List[str] = Field(default=["http://localhost:3000"], env="CORS_ORIGINS")
-    allowed_hosts: List[str] = Field(default=["localhost", "127.0.0.1"], env="ALLOWED_HOSTS")
+    # Redis - using centralized constants
+    redis_url: str = Field(..., env=REDIS_URL)
     
-    # Rate limiting
-    rate_limit_per_minute: int = Field(default=100, env="RATE_LIMIT_PER_MINUTE")
-    rate_limit_per_hour: int = Field(default=1000, env="RATE_LIMIT_PER_HOUR")
+    # Security - using centralized constants and defaults
+    cors_origins: List[str] = Field(
+        default=(get_env_value(CORS_ORIGINS, fallback=True) or "http://localhost:3000").split(","),
+        env=CORS_ORIGINS
+    )
+    allowed_hosts: List[str] = Field(
+        default=(get_env_value(ALLOWED_HOSTS, fallback=True) or "localhost,127.0.0.1").split(","),
+        env=ALLOWED_HOSTS
+    )
+    
+    # Rate limiting - using centralized constants and defaults
+    rate_limit_per_minute: int = Field(
+        default=int(get_env_value(RATE_LIMIT_PER_MINUTE, fallback=True) or "100"),
+        env=RATE_LIMIT_PER_MINUTE
+    )
+    rate_limit_per_hour: int = Field(
+        default=int(get_env_value(RATE_LIMIT_PER_HOUR, fallback=True) or "1000"),
+        env=RATE_LIMIT_PER_HOUR
+    )
     
     class Config:
         env_file = ".env"
@@ -167,13 +215,26 @@ class BaseConfig(BaseSettings):
 
 
 class AuthServiceConfig(BaseConfig):
-    """Configuration for Auth Service"""
+    """
+    Configuration for Auth Service
     
-    # JWT Configuration
-    jwt_secret_key: str = Field(..., env="JWT_SECRET_KEY")
-    jwt_algorithm: str = Field(default="HS256", env="JWT_ALGORITHM")
-    access_token_expire_minutes: int = Field(default=1440, env="ACCESS_TOKEN_EXPIRE_MINUTES")
-    refresh_token_expire_days: int = Field(default=30, env="REFRESH_TOKEN_EXPIRE_DAYS")
+    Updated to use centralized environment constants and defaults.
+    """
+    
+    # JWT Configuration - using centralized constants and defaults
+    jwt_secret_key: str = Field(..., env=JWT_SECRET_KEY)
+    jwt_algorithm: str = Field(
+        default=get_env_value(JWT_ALGORITHM, fallback=True) or "HS256",
+        env=JWT_ALGORITHM
+    )
+    access_token_expire_minutes: int = Field(
+        default=int(get_env_value(JWT_ACCESS_TOKEN_EXPIRE_MINUTES, fallback=True) or "1440"),
+        env=JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+    refresh_token_expire_days: int = Field(
+        default=int(get_env_value(JWT_REFRESH_TOKEN_EXPIRE_DAYS, fallback=True) or "30"),
+        env=JWT_REFRESH_TOKEN_EXPIRE_DAYS
+    )
     
     @field_validator('jwt_secret_key')
     @classmethod
@@ -186,16 +247,29 @@ class AuthServiceConfig(BaseConfig):
 
 
 class CreatorHubServiceConfig(BaseConfig):
-    """Configuration for Creator Hub Service"""
+    """
+    Configuration for Creator Hub Service
     
-    # Service URLs
-    auth_service_url: str = Field(..., env="AUTH_SERVICE_URL")
-    ai_engine_service_url: str = Field(..., env="AI_ENGINE_SERVICE_URL")
+    Updated to use centralized environment constants and defaults.
+    """
     
-    # File Upload Configuration
-    max_upload_size: int = Field(default=52428800, env="MAX_UPLOAD_SIZE")  # 50MB
-    uploads_dir: str = Field(default="./uploads", env="UPLOADS_DIR")
-    supported_formats: List[str] = Field(default=[".pdf", ".txt", ".docx", ".md"], env="SUPPORTED_FORMATS")
+    # Service URLs - using centralized constants
+    auth_service_url: str = Field(..., env=AUTH_SERVICE_URL)
+    ai_engine_service_url: str = Field(..., env=AI_ENGINE_SERVICE_URL)
+    
+    # File Upload Configuration - using centralized constants and defaults
+    max_upload_size: int = Field(
+        default=int(get_env_value(MAX_UPLOAD_SIZE, fallback=True) or "52428800"),  # 50MB
+        env=MAX_UPLOAD_SIZE
+    )
+    uploads_dir: str = Field(
+        default=get_env_value(UPLOADS_DIR, fallback=True) or "./uploads",
+        env=UPLOADS_DIR
+    )
+    supported_formats: List[str] = Field(
+        default=(get_env_value(SUPPORTED_FORMATS, fallback=True) or "pdf,txt,docx,md").split(","),
+        env=SUPPORTED_FORMATS
+    )
     
     @field_validator('supported_formats', mode='before')
     @classmethod
@@ -206,23 +280,51 @@ class CreatorHubServiceConfig(BaseConfig):
 
 
 class AIEngineServiceConfig(BaseConfig):
-    """Configuration for AI Engine Service"""
+    """
+    Configuration for AI Engine Service
     
-    # AI Service URLs
-    ollama_url: str = Field(default="http://localhost:11434", env="OLLAMA_URL")
-    chromadb_url: str = Field(default="http://localhost:8000", env="CHROMADB_URL")
+    Updated to use centralized environment constants and defaults.
+    """
     
-    # Model Configuration
-    embedding_model: str = Field(default="nomic-embed-text", env="EMBEDDING_MODEL")
-    chat_model: str = Field(default="gpt-oss:20b", env="CHAT_MODEL")
+    # AI Service URLs - using centralized constants and defaults
+    ollama_url: str = Field(
+        default=get_env_value(OLLAMA_URL, fallback=True) or "http://localhost:11434",
+        env=OLLAMA_URL
+    )
+    chromadb_url: str = Field(
+        default=get_env_value(CHROMADB_URL, fallback=True) or "http://localhost:8000",
+        env=CHROMADB_URL
+    )
     
-    # ChromaDB Configuration
-    chroma_shard_count: int = Field(default=10, env="CHROMA_SHARD_COUNT")
-    chroma_max_connections: int = Field(default=10, env="CHROMA_MAX_CONNECTIONS_PER_INSTANCE")
+    # Model Configuration - using centralized constants and defaults
+    embedding_model: str = Field(
+        default=get_env_value(EMBEDDING_MODEL, fallback=True) or "nomic-embed-text",
+        env=EMBEDDING_MODEL
+    )
+    chat_model: str = Field(
+        default=get_env_value(CHAT_MODEL, fallback=True) or "llama2:7b-chat",
+        env=CHAT_MODEL
+    )
     
-    # Processing Configuration
-    default_chunk_size: int = Field(default=1000, env="DEFAULT_CHUNK_SIZE")
-    default_chunk_overlap: int = Field(default=200, env="DEFAULT_CHUNK_OVERLAP")
+    # ChromaDB Configuration - using centralized constants and defaults
+    chroma_shard_count: int = Field(
+        default=int(get_env_value(CHROMA_SHARD_COUNT, fallback=True) or "10"),
+        env=CHROMA_SHARD_COUNT
+    )
+    chroma_max_connections: int = Field(
+        default=int(get_env_value(CHROMA_MAX_CONNECTIONS_PER_INSTANCE, fallback=True) or "10"),
+        env=CHROMA_MAX_CONNECTIONS_PER_INSTANCE
+    )
+    
+    # Processing Configuration - using centralized constants and defaults
+    default_chunk_size: int = Field(
+        default=int(get_env_value(DEFAULT_CHUNK_SIZE, fallback=True) or "1000"),
+        env=DEFAULT_CHUNK_SIZE
+    )
+    default_chunk_overlap: int = Field(
+        default=int(get_env_value(DEFAULT_CHUNK_OVERLAP, fallback=True) or "200"),
+        env=DEFAULT_CHUNK_OVERLAP
+    )
     
     @field_validator('chroma_shard_count')
     @classmethod
@@ -233,44 +335,75 @@ class AIEngineServiceConfig(BaseConfig):
 
 
 class ChannelServiceConfig(BaseConfig):
-    """Configuration for Channel Service"""
+    """
+    Configuration for Channel Service
     
-    # Service URLs
-    auth_service_url: str = Field(..., env="AUTH_SERVICE_URL")
-    ai_engine_service_url: str = Field(..., env="AI_ENGINE_SERVICE_URL")
+    Updated to use centralized environment constants and defaults.
+    """
     
-    # WebSocket Configuration
-    websocket_timeout: int = Field(default=300, env="WEBSOCKET_TIMEOUT")
-    max_connections_per_instance: int = Field(default=1000, env="MAX_CONNECTIONS_PER_INSTANCE")
-    heartbeat_interval: int = Field(default=30, env="HEARTBEAT_INTERVAL")
+    # Service URLs - using centralized constants
+    auth_service_url: str = Field(..., env=AUTH_SERVICE_URL)
+    ai_engine_service_url: str = Field(..., env=AI_ENGINE_SERVICE_URL)
+    
+    # WebSocket Configuration - using centralized constants and defaults
+    websocket_timeout: int = Field(
+        default=int(get_env_value(WEBSOCKET_TIMEOUT, fallback=True) or "300"),
+        env=WEBSOCKET_TIMEOUT
+    )
+    max_connections_per_instance: int = Field(
+        default=int(get_env_value(MAX_CONNECTIONS_PER_INSTANCE, fallback=True) or "1000"),
+        env=MAX_CONNECTIONS_PER_INSTANCE
+    )
+    heartbeat_interval: int = Field(
+        default=int(get_env_value(HEARTBEAT_INTERVAL, fallback=True) or "30"),
+        env=HEARTBEAT_INTERVAL
+    )
 
 
 class VaultConfig(BaseSettings):
-    """Vault configuration for secret management"""
+    """
+    Vault configuration for secret management
     
-    vault_url: str = Field(default="http://localhost:8200", env="VAULT_URL")
-    vault_token: str = Field(default="", env="VAULT_TOKEN")
-    vault_mount_point: str = Field(default="secret", env="VAULT_MOUNT_POINT")
-    vault_enabled: bool = Field(default=False, env="VAULT_ENABLED")
+    Updated to use centralized environment constants and defaults.
+    """
+    
+    vault_url: str = Field(
+        default=get_env_value(VAULT_URL, fallback=True) or "http://localhost:8200",
+        env=VAULT_URL
+    )
+    vault_token: str = Field(
+        default=get_env_value(VAULT_TOKEN, fallback=True) or "",
+        env=VAULT_TOKEN
+    )
+    vault_mount_point: str = Field(
+        default=get_env_value(VAULT_MOUNT_POINT, fallback=True) or "secret",
+        env=VAULT_MOUNT_POINT
+    )
+    vault_enabled: bool = Field(
+        default=(get_env_value(VAULT_ENABLED, fallback=True) or "false").lower() == "true",
+        env=VAULT_ENABLED
+    )
     
     class Config:
         env_file = ".env"
 
 
 def validate_required_env_vars(required_vars: List[str]) -> Dict[str, str]:
-    """Validate that required environment variables are set"""
-    missing_vars = []
-    env_vars = {}
+    """
+    Validate that required environment variables are set
     
-    for var in required_vars:
-        value = os.getenv(var)
-        if not value:
-            missing_vars.append(var)
-        else:
-            env_vars[var] = value
-    
-    if missing_vars:
+    Updated to use centralized environment validation from env_constants.
+    """
+    is_valid, missing_vars = validate_environment_variables(required_vars)
+    if not is_valid:
         raise RuntimeError(f"Missing required environment variables: {missing_vars}")
+    
+    # Build return dictionary with actual values
+    env_vars = {}
+    for var in required_vars:
+        value = get_env_value(var, fallback=True)
+        if value:
+            env_vars[var] = value
     
     return env_vars
 

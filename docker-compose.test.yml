@@ -1,0 +1,291 @@
+version: '3.8'
+
+services:
+  # Test Database
+  postgres-test:
+    image: postgres:15
+    container_name: postgres-test
+    environment:
+      POSTGRES_DB: ai_platform_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./scripts/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    # NOTE: Using tmpfs for PostgreSQL data directory makes database data ephemeral
+    # Data is lost on container stop/restart, which is intentional for isolated test runs
+    # If data persistence is required across container restarts, replace with:
+    # volumes: - postgres_test_data:/var/lib/postgresql/data
+    # WARNING: tmpfs may not work on macOS/Windows Docker environments
+    tmpfs:
+      - /var/lib/postgresql/data:rw,noexec,nosuid,size=1g
+    command: >
+      postgres
+      -c shared_preload_libraries=pg_stat_statements
+      -c pg_stat_statements.track=all
+      -c log_statement=none
+      -c log_min_duration_statement=1000
+      -c checkpoint_completion_target=0.9
+      -c default_statistics_target=100
+      -c fsync=off
+      -c synchronous_commit=off
+      -c full_page_writes=off
+    # WARNING: The above durability flags (fsync=off, synchronous_commit=off, full_page_writes=off)
+    # are INTENTIONALLY DISABLED for performance in ephemeral test environments only.
+    # These settings risk data loss and corruption and should NEVER be used in production
+    # or any persistent environment. Use only for temporary test databases that can be rebuilt.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_platform_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # Test Redis
+  redis-test:
+    image: redis:7-alpine
+    container_name: redis-test
+    ports:
+      - "6380:6379"
+    command: redis-server --save "" --appendonly no --maxmemory 256mb --maxmemory-policy allkeys-lru
+    tmpfs:
+      - /data:rw,noexec,nosuid,size=256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - test-network
+
+  # Test Ollama (for AI tests)
+  ollama-test:
+    image: ollama/ollama:latest
+    container_name: ollama-test
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama_test_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - test-network
+
+  # Test ChromaDB (for vector storage tests)
+  chromadb-test:
+    image: chromadb/chroma:latest
+    container_name: chromadb-test
+    ports:
+      - "8001:8000"
+    volumes:
+      - chromadb_test_data:/chroma/chroma
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+      - ANONYMIZED_TELEMETRY=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # Auth Service (for integration tests)
+  auth-service-test:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    container_name: auth-service-test
+    ports:
+      - "8011:8001"
+    environment:
+      - ENVIRONMENT=testing
+      - DATABASE_URL=postgresql://postgres:postgres@postgres-test:5432/ai_platform_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - JWT_SECRET_KEY=test-secret-key-for-testing-only
+      - CORS_ORIGINS=["http://localhost:3000"]
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # AI Engine Service (for integration tests)
+  ai-engine-service-test:
+    build:
+      context: .
+      dockerfile: services/ai-engine-service/Dockerfile
+    container_name: ai-engine-service-test
+    ports:
+      - "8013:8003"
+    environment:
+      - ENVIRONMENT=testing
+      - DATABASE_URL=postgresql://postgres:postgres@postgres-test:5432/ai_platform_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - OLLAMA_URL=http://ollama-test:11434
+      - CHROMADB_URL=http://chromadb-test:8000
+      - EMBEDDING_MODEL=nomic-embed-text
+      - CHAT_MODEL=llama3.2
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      ollama-test:
+        condition: service_healthy
+      chromadb-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/api/v1/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - test-network
+
+  # Creator Hub Service (for integration tests)
+  creator-hub-service-test:
+    build:
+      context: .
+      dockerfile: services/creator-hub-service/Dockerfile
+    container_name: creator-hub-service-test
+    ports:
+      - "8012:8002"
+    environment:
+      - ENVIRONMENT=testing
+      - DATABASE_URL=postgresql://postgres:postgres@postgres-test:5432/ai_platform_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - AUTH_SERVICE_URL=http://auth-service-test:8001
+      - AI_ENGINE_SERVICE_URL=http://ai-engine-service-test:8003
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      auth-service-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # Channel Service (for integration tests)
+  channel-service-test:
+    build:
+      context: .
+      dockerfile: services/channel-service/Dockerfile
+    container_name: channel-service-test
+    ports:
+      - "8014:8004"
+    environment:
+      - ENVIRONMENT=testing
+      - DATABASE_URL=postgresql://postgres:postgres@postgres-test:5432/ai_platform_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - AUTH_SERVICE_URL=http://auth-service-test:8001
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      auth-service-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # Test Runner
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: test-runner
+    volumes:
+      - .:/app
+      - test_results:/app/test-results
+      - test_coverage:/app/coverage
+      - test_logs:/app/logs
+    # SECURITY: Removed /var/run/docker.sock mount to prevent privilege escalation
+    # If Docker-in-Docker functionality is needed, use a dedicated DinD service instead
+    environment:
+      - ENVIRONMENT=testing
+      - DATABASE_URL=postgresql://postgres:postgres@postgres-test:5432/ai_platform_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - AUTH_SERVICE_URL=http://auth-service-test:8001
+      - AI_ENGINE_SERVICE_URL=http://ai-engine-service-test:8003
+      - CREATOR_HUB_SERVICE_URL=http://creator-hub-service-test:8002
+      - CHANNEL_SERVICE_URL=http://channel-service-test:8004
+      - OLLAMA_URL=http://ollama-test:11434
+      - CHROMADB_URL=http://chromadb-test:8000
+      - JWT_SECRET_KEY=test-secret-key-for-testing-only
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      auth-service-test:
+        condition: service_healthy
+      ai-engine-service-test:
+        condition: service_healthy
+      creator-hub-service-test:
+        condition: service_healthy
+      channel-service-test:
+        condition: service_healthy
+    networks:
+      - test-network
+    profiles:
+      - test
+
+volumes:
+  # Persistent volumes for services that need data persistence across container restarts
+  # ollama_test_data: Stores Ollama model data and configuration for AI testing
+  ollama_test_data:
+    driver: local
+  # chromadb_test_data: Stores vector embeddings and ChromaDB data for testing
+  chromadb_test_data:
+    driver: local
+  # Test result volumes for CI/CD pipeline artifacts
+  test_results:
+    driver: local
+  test_coverage:
+    driver: local
+  test_logs:
+    driver: local
+
+networks:
+  test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

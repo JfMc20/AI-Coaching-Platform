@@ -30,7 +30,11 @@ RUN echo "fastapi==0.104.0" > requirements.txt && \
     echo "redis==5.0.1" >> requirements.txt && \
     echo "python-jose[cryptography]==3.3.0" >> requirements.txt && \
     echo "python-multipart==0.0.6" >> requirements.txt && \
-    echo "pydantic==2.5.0" >> requirements.txt
+    echo "pydantic[email]==2.5.0" >> requirements.txt && \
+    echo "httpx==0.25.0" >> requirements.txt && \
+    echo "passlib[bcrypt]==1.7.4" >> requirements.txt && \
+    echo "argon2-cffi==23.1.0" >> requirements.txt && \
+    echo "python-dotenv==1.0.0" >> requirements.txt
 
 # Pre-download and build wheels
 RUN pip wheel --wheel-dir /build/wheels -r requirements.txt

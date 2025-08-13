@@ -31,7 +31,9 @@ RUN echo "fastapi==0.104.0" > requirements.txt && \
     echo "python-magic==0.4.27" >> requirements.txt && \
     echo "PyPDF2==3.0.1" >> requirements.txt && \
     echo "python-docx==1.1.0" >> requirements.txt && \
-    echo "pydantic==2.5.0" >> requirements.txt
+    echo "pydantic[email]==2.5.0" >> requirements.txt && \
+    echo "httpx==0.25.0" >> requirements.txt && \
+    echo "python-dotenv==1.0.0" >> requirements.txt
 
 # Pre-download and build wheels
 RUN pip wheel --wheel-dir /build/wheels -r requirements.txt

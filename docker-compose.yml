@@ -1,11 +1,15 @@
+# Docker Compose Configuration
+# Environment variable names and defaults are centralized in shared/config/env_constants.py
+# All variable names and fallback values come from ENVIRONMENT_DEFAULTS['development']
+
 # YAML Anchors for common configurations
 x-common-variables: &common-variables
-  POSTGRES_DB: ${POSTGRES_DB:-mvp_coaching}
+  POSTGRES_DB: ${POSTGRES_DB:-ai_platform_dev}
   POSTGRES_USER: ${POSTGRES_USER:-postgres}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
 
 x-database-url: &database-url
-  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-mvp_coaching}
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_platform_dev}
 
 x-service-defaults: &service-defaults
   networks:
@@ -105,14 +109,31 @@ services:
       - "8001:8001"
     environment:
       <<: *database-url
+      # Redis configuration - using database /0 for auth-service
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      # JWT/Authentication configuration
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-key-change-in-production}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
-      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
-      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-30}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-ai-platform-dev}
+      JWT_ISSUER: ${JWT_ISSUER:-ai-platform-auth-dev}
+      # Security configuration
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000", "http://localhost:8080"]}
+      MAX_FAILED_LOGIN_ATTEMPTS: ${MAX_FAILED_LOGIN_ATTEMPTS:-5}
+      ACCOUNT_LOCKOUT_DURATION_MINUTES: ${ACCOUNT_LOCKOUT_DURATION_MINUTES:-30}
+      PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: ${PASSWORD_RESET_TOKEN_EXPIRE_MINUTES:-60}
+      # Rate limiting configuration
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-1000}
+      # Environment configuration
       ENVIRONMENT: ${ENVIRONMENT:-development}
-      DEBUG: ${DEBUG:-false}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      SQL_ECHO: ${SQL_ECHO:-true}
+      SLOW_QUERY_THRESHOLD: ${SLOW_QUERY_THRESHOLD:-1.0}
+      # Database configuration
+      DB_AUTO_CREATE: ${DB_AUTO_CREATE:-true}
       PORT: 8001
     healthcheck:
       <<: *healthcheck-defaults
@@ -128,14 +149,26 @@ services:
       - "8002:8002"
     environment:
       <<: *database-url
+      # Redis configuration - using database /1 for creator-hub-service
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
+      # Service URL configuration
       AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8001}
       AI_ENGINE_SERVICE_URL: ${AI_ENGINE_SERVICE_URL:-http://ai-engine-service:8003}
-      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-52428800}
-      UPLOADS_DIR: ${UPLOADS_DIR:-/app/uploads}
+      # File upload configuration
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-10485760}
+      UPLOADS_DIR: ${UPLOADS_DIR:-./uploads}
+      SUPPORTED_FORMATS: ${SUPPORTED_FORMATS:-["pdf", "txt", "docx", "md"]}
+      # Security configuration
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000", "http://localhost:8080"]}
+      # Rate limiting configuration
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-1000}
+      # Environment configuration
       ENVIRONMENT: ${ENVIRONMENT:-development}
-      DEBUG: ${DEBUG:-false}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      SQL_ECHO: ${SQL_ECHO:-true}
+      SLOW_QUERY_THRESHOLD: ${SLOW_QUERY_THRESHOLD:-1.0}
       PORT: 8002
     volumes:
       - uploads_data:/app/uploads
@@ -157,14 +190,28 @@ services:
       - "8003:8003"
     environment:
       <<: *database-url
+      # Redis configuration - using database /2 for ai-engine-service
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/2}
+      # AI service configuration
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       CHROMADB_URL: ${CHROMADB_URL:-http://chromadb:8000}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
-      CHAT_MODEL: ${CHAT_MODEL:-gpt-oss:20b}
+      CHAT_MODEL: ${CHAT_MODEL:-llama3.2}
+      CHROMA_SHARD_COUNT: ${CHROMA_SHARD_COUNT:-1}
+      CHROMA_MAX_CONNECTIONS_PER_INSTANCE: ${CHROMA_MAX_CONNECTIONS_PER_INSTANCE:-10}
+      DEFAULT_CHUNK_SIZE: ${DEFAULT_CHUNK_SIZE:-1000}
+      DEFAULT_CHUNK_OVERLAP: ${DEFAULT_CHUNK_OVERLAP:-200}
+      # Security configuration
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000", "http://localhost:8080"]}
+      # Rate limiting configuration
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-1000}
+      # Environment configuration
       ENVIRONMENT: ${ENVIRONMENT:-development}
-      DEBUG: ${DEBUG:-false}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      SQL_ECHO: ${SQL_ECHO:-true}
+      SLOW_QUERY_THRESHOLD: ${SLOW_QUERY_THRESHOLD:-1.0}
       PORT: 8003
     healthcheck:
       <<: *healthcheck-defaults
@@ -185,12 +232,26 @@ services:
       - "8004:8004"
     environment:
       <<: *database-url
+      # Redis configuration - using database /3 for channel-service
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/3}
+      # Service URL configuration
       AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8001}
       AI_ENGINE_SERVICE_URL: ${AI_ENGINE_SERVICE_URL:-http://ai-engine-service:8003}
+      # Security configuration
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000", "http://localhost:8080"]}
+      # Rate limiting configuration
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-1000}
+      # WebSocket configuration
+      WEBSOCKET_TIMEOUT: ${WEBSOCKET_TIMEOUT:-60}
+      MAX_CONNECTIONS_PER_INSTANCE: ${MAX_CONNECTIONS_PER_INSTANCE:-100}
+      HEARTBEAT_INTERVAL: ${HEARTBEAT_INTERVAL:-30}
+      # Environment configuration
       ENVIRONMENT: ${ENVIRONMENT:-development}
-      DEBUG: ${DEBUG:-false}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      SQL_ECHO: ${SQL_ECHO:-true}
+      SLOW_QUERY_THRESHOLD: ${SLOW_QUERY_THRESHOLD:-1.0}
       PORT: 8004
     healthcheck:
       <<: *healthcheck-defaults

@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from shared.config.settings import validate_service_environment
+from shared.config.env_constants import CORS_ORIGINS, REQUIRED_VARS_BY_SERVICE, get_env_value
 from shared.ai.chromadb_manager import get_chromadb_manager, close_chromadb_manager
 from shared.ai.ollama_manager import get_ollama_manager, close_ollama_manager
 
@@ -22,15 +23,8 @@ from shared.ai.ollama_manager import get_ollama_manager, close_ollama_manager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Environment variables validation
-required_env_vars = [
-    "DATABASE_URL",
-    "REDIS_URL",
-    "OLLAMA_URL",
-    "CHROMADB_URL",
-    "EMBEDDING_MODEL",
-    "CHAT_MODEL"
-]
+# Environment variables validation using centralized configuration constants
+required_env_vars = REQUIRED_VARS_BY_SERVICE["ai_engine_service"]
 
 validate_service_environment(required_env_vars, logger)
 
@@ -115,10 +109,10 @@ app = FastAPI(
     ]
 )
 
-# CORS middleware
+# CORS middleware using centralized configuration constants
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_origins=(get_env_value(CORS_ORIGINS, fallback=True) or "http://localhost:3000").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

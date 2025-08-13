@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from shared.config.settings import validate_service_environment
+# Import centralized environment constants and helpers
+from shared.config.env_constants import CORS_ORIGINS, JWT_SECRET_KEY, REQUIRED_VARS_BY_SERVICE, get_env_value
 
 from .database import get_db_manager, init_database, close_db
 from .routes.auth import router as auth_router
@@ -24,11 +26,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Environment variables validation
-required_env_vars = [
-    "DATABASE_URL",
-    "JWT_SECRET_KEY"
-]
+# Environment variables validation using centralized configuration
+required_env_vars = REQUIRED_VARS_BY_SERVICE["auth_service"]
 
 validate_service_environment(required_env_vars, logger)
 
@@ -95,10 +94,10 @@ app = FastAPI(
     ]
 )
 
-# CORS middleware
+# CORS middleware using centralized configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8080").split(","),
+    allow_origins=(get_env_value(CORS_ORIGINS, fallback=True) or "http://localhost:3000,http://localhost:8080").split(","),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -143,8 +142,8 @@ async def readiness_check():
         else:
             checks["database"] = "disconnected"
         
-        # Check JWT configuration
-        if os.getenv("JWT_SECRET_KEY"):
+        # Check JWT configuration using centralized constants
+        if get_env_value(JWT_SECRET_KEY, fallback=True):
             checks["jwt_config"] = "configured"
         else:
             checks["jwt_config"] = "missing"

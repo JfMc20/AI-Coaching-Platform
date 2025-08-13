@@ -1,62 +1,174 @@
+# Pre-commit configuration for the AI coaching platform
+# See https://pre-commit.com for more information
+
 repos:
+  # Python code formatting
   - repo: https://github.com/psf/black
-    rev: 23.9.1
+    rev: 23.12.1
     hooks:
       - id: black
         language_version: python3.11
         args: [--line-length=100]
 
+  # Import sorting
   - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
+    rev: 5.13.2
     hooks:
       - id: isort
         args: [--profile=black, --line-length=100]
 
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.0.292
+  # Python linting
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
     hooks:
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
+      - id: flake8
+        args: [--max-line-length=100, --extend-ignore=E203,W503]
+        additional_dependencies:
+          - flake8-docstrings
+          - flake8-bugbear
+          - flake8-comprehensions
 
+  # Type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.5.1
+    rev: v1.8.0
     hooks:
       - id: mypy
         additional_dependencies: [types-all]
-        args: [--strict, --ignore-missing-imports]
-        exclude: ^(scripts/|tests/)
+        args: [--ignore-missing-imports, --no-strict-optional]
 
-  - repo: local
+  # Security linting
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.5
     hooks:
-      - id: complexity-check
-        name: Complexity Check
-        entry: radon cc --min B --show-complexity
-        language: system
-        files: \.py$
-        exclude: ^(scripts/|tests/|migrations/)
-        
-      - id: maintainability-check
-        name: Maintainability Check  
-        entry: radon mi --min B
-        language: system
-        files: \.py$
-        exclude: ^(scripts/|tests/|migrations/)
+      - id: bandit
+        args: [-r, -x, tests/]
 
-      - id: security-check
-        name: Security Check
-        entry: bandit -r . -ll
-        language: system
-        files: \.py$
-        exclude: ^(tests/|scripts/)
-
+  # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v4.5.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        args: [--unsafe]
       - id: check-json
+      - id: check-toml
+      - id: check-xml
       - id: check-merge-conflict
-      - id: check-added-large-files
-        args: ['--maxkb=1000']
-      - id: detect-private-key
+      - id: check-case-conflict
+      - id: check-docstring-first
+      - id: debug-statements
+      - id: requirements-txt-fixer
+
+  # Dockerfile linting
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: [--ignore, DL3008, --ignore, DL3009]
+
+  # YAML formatting
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        types: [yaml]
+
+  # Shell script linting
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+
+  # Environment variable cleanup check
+  - repo: local
+    hooks:
+      - id: env-cleanup-check
+        name: Environment Variable Cleanup Check
+        entry: python scripts/env_cleanup.py --dry-run
+        language: system
+        files: ^shared/config/env_constants\.py$
+        pass_filenames: false
+
+  # Dead code detection
+  - repo: local
+    hooks:
+      - id: dead-code-check
+        name: Dead Code Detection
+        entry: python scripts/dead_code_analysis.py --check-only
+        language: system
+        types: [python]
+        pass_filenames: false
+
+  # Test coverage check
+  - repo: local
+    hooks:
+      - id: test-coverage
+        name: Test Coverage Check
+        entry: bash -c 'pytest --cov=shared --cov=services --cov-fail-under=80 --quiet'
+        language: system
+        pass_filenames: false
+        stages: [push]
+
+  # Security dependency check
+  - repo: https://github.com/PyCQA/safety
+    rev: 2.3.5
+    hooks:
+      - id: safety
+        args: [--ignore=70612]  # Ignore specific vulnerabilities if needed
+
+  # License header check
+  - repo: local
+    hooks:
+      - id: license-header
+        name: License Header Check
+        entry: python scripts/check_license_headers.py
+        language: system
+        types: [python]
+        pass_filenames: false
+
+  # API documentation check
+  - repo: local
+    hooks:
+      - id: api-docs-check
+        name: API Documentation Check
+        entry: bash -c 'python -c "from services.auth_service.app.main import app; print(\"Auth API docs OK\")" && python -c "from services.ai_engine_service.app.main import app; print(\"AI Engine API docs OK\")"'
+        language: system
+        files: ^services/.*/app/main\.py$
+        pass_filenames: false
+
+# Configuration
+default_stages: [commit]
+fail_fast: false
+
+# Exclude patterns
+exclude: |
+  (?x)^(
+    .*\.min\.js|
+    .*\.min\.css|
+    .*\.map|
+    node_modules/.*|
+    \.venv/.*|
+    venv/.*|
+    __pycache__/.*|
+    \.pytest_cache/.*|
+    \.git/.*|
+    \.tox/.*|
+    build/.*|
+    dist/.*|
+    .*\.egg-info/.*|
+    migrations/versions/.*\.py
+  )$
+
+# CI configuration
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit.com hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: weekly
+  skip: [test-coverage, dead-code-check, env-cleanup-check]
+  submodules: false

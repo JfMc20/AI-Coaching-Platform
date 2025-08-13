@@ -1,12 +1,27 @@
 """
 Email Service
 Handles sending emails for password reset and other authentication flows
+
+This service has been migrated to use the centralized environment constants system
+located in shared.config.env_constants for consistent configuration management.
 """
 
 import hashlib
-import os
 import logging
 from typing import Optional
+
+from shared.config.env_constants import (
+    FRONTEND_URL,
+    EMAIL_SERVICE_ENABLED,
+    FROM_EMAIL,
+    FROM_NAME,
+    SMTP_HOST,
+    SMTP_PORT,
+    SMTP_USER,
+    SMTP_PASSWORD,
+    SMTP_USE_TLS,
+    get_env_value
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,18 +63,18 @@ class EmailService:
         return hashlib.sha256(token.encode('utf-8')).hexdigest()
     
     def __init__(self):
-        # Email configuration
-        self.frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-        self.email_service_enabled = os.getenv("EMAIL_SERVICE_ENABLED", "false").lower() == "true"
-        self.from_email = os.getenv("FROM_EMAIL", "noreply@example.com")
-        self.from_name = os.getenv("FROM_NAME", "MVP Coaching AI Platform")
+        # Email configuration - using centralized environment constants
+        self.frontend_url = get_env_value(FRONTEND_URL, fallback=True) or "http://localhost:3000"
+        self.email_service_enabled = (get_env_value(EMAIL_SERVICE_ENABLED, fallback=True) or "false").lower() == "true"
+        self.from_email = get_env_value(FROM_EMAIL, fallback=True) or "noreply@example.com"
+        self.from_name = get_env_value(FROM_NAME, fallback=True) or "MVP Coaching AI Platform"
         
-        # SMTP configuration (for future implementation)
-        self.smtp_host = os.getenv("SMTP_HOST", "")
-        self.smtp_port = self._parse_smtp_port(os.getenv("SMTP_PORT", "587"))
-        self.smtp_user = os.getenv("SMTP_USER", "")
-        self.smtp_password = os.getenv("SMTP_PASSWORD", "")
-        self.smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+        # SMTP configuration (for future implementation) - using centralized environment constants
+        self.smtp_host = get_env_value(SMTP_HOST, fallback=True) or ""
+        self.smtp_port = self._parse_smtp_port(get_env_value(SMTP_PORT, fallback=True) or "587")
+        self.smtp_user = get_env_value(SMTP_USER, fallback=True) or ""
+        self.smtp_password = get_env_value(SMTP_PASSWORD, fallback=True) or ""
+        self.smtp_use_tls = (get_env_value(SMTP_USE_TLS, fallback=True) or "true").lower() == "true"
     
     def send_password_reset_email(self, email: str, reset_token: str, client_ip: Optional[str] = None) -> bool:
         """

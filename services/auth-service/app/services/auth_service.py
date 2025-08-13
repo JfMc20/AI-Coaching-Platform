@@ -1,9 +1,12 @@
 """
 Authentication Service
 Handles user authentication, JWT tokens, and security operations
+
+This service has been migrated to use the centralized environment constants system
+located in shared.config.env_constants for consistent configuration management
+across all services.
 """
 
-import os
 import uuid
 import secrets
 import hashlib
@@ -20,6 +23,12 @@ from fastapi import HTTPException, status
 from jose import JWTError, jwt
 from jose.exceptions import ExpiredSignatureError, JWTClaimsError
 
+from shared.config.env_constants import (
+    JWT_SECRET_KEY, JWT_ALGORITHM, JWT_ACCESS_TOKEN_EXPIRE_MINUTES,
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS, MAX_FAILED_LOGIN_ATTEMPTS,
+    ACCOUNT_LOCKOUT_DURATION_MINUTES, PASSWORD_RESET_TOKEN_EXPIRE_MINUTES,
+    get_env_value
+)
 from shared.models.database import Creator, RefreshToken, UserSession, PasswordResetToken, JWTBlacklist, AuditLog
 from shared.models.auth import (
     CreatorCreate, CreatorResponse, TokenResponse, LoginRequest,
@@ -34,19 +43,25 @@ logger = logging.getLogger(__name__)
 
 
 class AuthService:
-    """Authentication service with comprehensive security features"""
+    """
+    Authentication service with comprehensive security features
+    
+    Configuration is managed through the centralized environment constants system
+    in shared.config.env_constants, which provides environment-specific defaults
+    and eliminates scattered hardcoded values throughout the codebase.
+    """
     
     def __init__(self):
-        # JWT Configuration
-        self.jwt_secret_key = os.getenv("JWT_SECRET_KEY")
-        self.jwt_algorithm = os.getenv("JWT_ALGORITHM", "RS256")
-        self.jwt_access_token_expire_minutes = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
-        self.jwt_refresh_token_expire_days = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "30"))
+        # JWT Configuration - using centralized constants with environment-specific defaults
+        self.jwt_secret_key = get_env_value(JWT_SECRET_KEY, fallback=True)
+        self.jwt_algorithm = get_env_value(JWT_ALGORITHM, fallback=True)
+        self.jwt_access_token_expire_minutes = int(get_env_value(JWT_ACCESS_TOKEN_EXPIRE_MINUTES, fallback=True))
+        self.jwt_refresh_token_expire_days = int(get_env_value(JWT_REFRESH_TOKEN_EXPIRE_DAYS, fallback=True))
         
-        # Security Configuration
-        self.max_failed_login_attempts = int(os.getenv("MAX_FAILED_LOGIN_ATTEMPTS", "5"))
-        self.account_lockout_duration_minutes = int(os.getenv("ACCOUNT_LOCKOUT_DURATION_MINUTES", "30"))
-        self.password_reset_token_expire_minutes = int(os.getenv("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", "15"))
+        # Security Configuration - using centralized constants with environment-specific defaults
+        self.max_failed_login_attempts = int(get_env_value(MAX_FAILED_LOGIN_ATTEMPTS, fallback=True))
+        self.account_lockout_duration_minutes = int(get_env_value(ACCOUNT_LOCKOUT_DURATION_MINUTES, fallback=True))
+        self.password_reset_token_expire_minutes = int(get_env_value(PASSWORD_RESET_TOKEN_EXPIRE_MINUTES, fallback=True))
         
         # Initialize security components
         self.password_hasher = PasswordHasher()
@@ -54,7 +69,7 @@ class AuthService:
         
         # Validate required configuration
         if not self.jwt_secret_key:
-            raise ValueError("JWT_SECRET_KEY environment variable is required")
+            raise ValueError(f"{JWT_SECRET_KEY} environment variable is required")
     
     async def register_creator(
         self, 

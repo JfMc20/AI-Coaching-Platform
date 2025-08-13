@@ -1,6 +1,9 @@
 """
 Ollama Manager for AI Engine Service
-Handles LLM and embedding model interactions with error handling and fallbacks
+Handles LLM and embedding model interactions with error handling and fallbacks.
+
+This module uses centralized environment configuration from shared.config.env_constants
+for all environment variable access and default values.
 """
 
 import os
@@ -13,6 +16,12 @@ from dataclasses import dataclass
 from contextlib import asynccontextmanager
 
 from shared.config.settings import get_ai_engine_config
+from shared.config.env_constants import (
+    OLLAMA_URL,
+    EMBEDDING_MODEL,
+    CHAT_MODEL,
+    get_env_value
+)
 from shared.exceptions.base import BaseServiceException
 
 logger = logging.getLogger(__name__)
@@ -65,10 +74,11 @@ class ChatResponse:
 
 class OllamaManager:
     """
-    Ollama client manager for LLM and embedding operations
+    Ollama client manager for LLM and embedding operations.
     
     Handles model loading, health checks, and API interactions with proper
-    error handling and connection management.
+    error handling and connection management. Uses centralized environment
+    configuration from shared.config.env_constants for all settings.
     """
     
     def __init__(
@@ -80,42 +90,43 @@ class OllamaManager:
         max_retries: int = 3
     ):
         """
-        Initialize Ollama manager
+        Initialize Ollama manager.
+        
+        Uses centralized environment configuration with automatic fallback to
+        environment-specific defaults when config loading fails.
         
         Args:
-            ollama_url: Ollama server URL (defaults to config)
-            embedding_model: Embedding model name (defaults to config)
-            chat_model: Chat model name (defaults to config)
+            ollama_url: Ollama server URL (defaults to config then centralized defaults)
+            embedding_model: Embedding model name (defaults to config then centralized defaults)
+            chat_model: Chat model name (defaults to config then centralized defaults)
             timeout: Request timeout in seconds
             max_retries: Maximum retry attempts for failed requests
         """
-        # Read configuration directly from environment variables as fallback
-        import os
-        
         try:
             self.config = get_ai_engine_config()
         except Exception as e:
-            logger.warning(f"Failed to load AI engine config: {str(e)}")
+            logger.warning(
+                f"Failed to load AI engine config: {str(e)}. "
+                f"Using centralized environment defaults."
+            )
             self.config = None
         
-        # Configuration with fallbacks - read directly from env if config fails
+        # Configuration with centralized fallbacks
+        # Priority: 1. Passed parameter, 2. Config from get_ai_engine_config, 3. Centralized defaults
         self.ollama_url = (
-            ollama_url or 
+            ollama_url or
             (self.config.ollama_url if self.config else None) or
-            os.getenv("OLLAMA_URL") or
-            "http://localhost:11434"
+            get_env_value(OLLAMA_URL, fallback=True)
         )
         self.embedding_model = (
-            embedding_model or 
+            embedding_model or
             (self.config.embedding_model if self.config else None) or
-            os.getenv("EMBEDDING_MODEL") or
-            "nomic-embed-text"
+            get_env_value(EMBEDDING_MODEL, fallback=True)
         )
         self.chat_model = (
-            chat_model or 
+            chat_model or
             (self.config.chat_model if self.config else None) or
-            os.getenv("CHAT_MODEL") or
-            "gpt-oss:20b"
+            get_env_value(CHAT_MODEL, fallback=True)
         )
         self.timeout = timeout
         self.max_retries = max_retries

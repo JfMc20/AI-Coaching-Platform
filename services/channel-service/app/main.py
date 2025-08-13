@@ -13,18 +13,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from shared.config.settings import validate_service_environment
+# Centralized environment constants and configuration management
+from shared.config.env_constants import CORS_ORIGINS, REQUIRED_VARS_BY_SERVICE, get_env_value
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Environment variables validation
-required_env_vars = [
-    "DATABASE_URL",
-    "REDIS_URL",
-    "AUTH_SERVICE_URL",
-    "AI_ENGINE_SERVICE_URL"
-]
+# Environment variables validation using centralized configuration
+required_env_vars = REQUIRED_VARS_BY_SERVICE["channel_service"]
 
 validate_service_environment(required_env_vars, logger)
 
@@ -96,10 +93,10 @@ app = FastAPI(
     ]
 )
 
-# CORS middleware
+# CORS middleware using centralized configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_origins=(get_env_value(CORS_ORIGINS, fallback=True) or "http://localhost:3000").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

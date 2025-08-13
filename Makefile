@@ -49,12 +49,34 @@ help:
 	@echo "  ai-engine-errors - Show AI Engine service errors only"
 	@echo "  channel-errors - Show Channel service errors only"
 	@echo ""
-	@echo "🧪 Development:"
-	@echo "  test           - Run tests for all services"
+	@echo "🧪 Testing:"
+	@echo "  test           - Run all tests with coverage"
+	@echo "  test-unit      - Run unit tests only"
+	@echo "  test-integration - Run integration tests only"
+	@echo "  test-e2e       - Run end-to-end tests only"
+	@echo "  test-security  - Run security tests only"
+	@echo "  test-performance - Run performance tests only"
+	@echo "  test-auth      - Run auth service tests"
+	@echo "  test-ai-engine - Run AI engine service tests"
+	@echo "  test-creator-hub - Run creator hub service tests"
+	@echo "  test-channel   - Run channel service tests"
+	@echo "  test-shared    - Run shared components tests"
+	@echo "  test-docker    - Run tests in Docker environment"
+	@echo "  test-watch     - Run tests in watch mode"
+	@echo "  test-coverage  - Generate coverage report"
+	@echo "  test-clean     - Clean test artifacts"
+	@echo ""
+	@echo "🔧 Development:"
 	@echo "  lint           - Run linting for all services"
 	@echo "  format         - Format code for all services"
 	@echo "  install-deps   - Install dependencies for all services"
 	@echo "  dev-credentials - Setup development credentials"
+	@echo ""
+	@echo "🧹 Code Quality:"
+	@echo "  analyze-dead-code - Analyze and report dead code"
+	@echo "  analyze-hardcoded - Analyze hardcoded values"
+	@echo "  cleanup-env    - Clean up environment variables"
+	@echo "  pre-commit     - Run pre-commit hooks"
 	@echo ""
 	@echo "🔐 Vault Management:"
 	@echo "  vault-start    - Start Vault development server"
@@ -77,9 +99,10 @@ setup:
 	@touch uploads/.gitkeep logs/.gitkeep
 	@docker-compose up -d --build
 	@echo "⏳ Waiting for services..."
-	@sleep 30
-	@docker-compose exec ollama ollama pull nomic-embed-text || true
-	@docker-compose exec ollama ollama pull llama2:7b-chat || true
+	@echo "⏳ Waiting for services to be healthy..."
+	@./scripts/wait-for-services.sh
+	@echo "📥 Pulling AI models..."
+	@./scripts/pull-ollama-models.sh
 	@echo "✅ Setup complete!"
 
 # Start services
@@ -119,15 +142,17 @@ logs-warnings:
 
 logs-save:
 	@echo "💾 Saving logs to files..."
-	@mkdir -p logs/$(shell date +%Y-%m-%d)
-	@docker-compose logs --no-color > logs/$(shell date +%Y-%m-%d)/all-services-$(shell date +%H-%M-%S).log
-	@docker-compose logs --no-color postgres > logs/$(shell date +%Y-%m-%d)/postgres-$(shell date +%H-%M-%S).log
-	@docker-compose logs --no-color redis > logs/$(shell date +%Y-%m-%d)/redis-$(shell date +%H-%M-%S).log
-	@docker-compose logs --no-color auth-service > logs/$(shell date +%Y-%m-%d)/auth-service-$(shell date +%H-%M-%S).log
-	@docker-compose logs --no-color creator-hub-service > logs/$(shell date +%Y-%m-%d)/creator-hub-service-$(shell date +%H-%M-%S).log
-	@docker-compose logs --no-color ai-engine-service > logs/$(shell date +%Y-%m-%d)/ai-engine-service-$(shell date +%H-%M-%S).log
-	@docker-compose logs --no-color channel-service > logs/$(shell date +%Y-%m-%d)/channel-service-$(shell date +%H-%M-%S).log
-	@echo "✅ Logs saved to logs/$(shell date +%Y-%m-%d)/"
+	$(eval TIMESTAMP := $(shell date +%Y-%m-%d))
+	$(eval TIME_SUFFIX := $(shell date +%H-%M-%S))
+	@mkdir -p logs/$(TIMESTAMP)
+	@for service in all-services postgres redis auth-service creator-hub-service ai-engine-service channel-service; do \
+		if [ "$$service" = "all-services" ]; then \
+			docker-compose logs --no-color > logs/$(TIMESTAMP)/$$service-$(TIME_SUFFIX).log; \
+		else \
+			docker-compose logs --no-color $$service > logs/$(TIMESTAMP)/$$service-$(TIME_SUFFIX).log; \
+		fi; \
+	done
+	@echo "✅ Logs saved to logs/$(TIMESTAMP)/"
 
 logs-clean:
 	@echo "🧹 Cleaning old log files (older than 7 days)..."
@@ -175,14 +200,71 @@ clean:
 	@docker-compose down -v --remove-orphans
 	@docker system prune -f
 
-# Run tests
+# Testing commands
 test:
-	@echo "🧪 Running tests..."
-	@cd shared && poetry run pytest || true
-	@cd services/auth-service && poetry run pytest || true
-	@cd services/creator-hub-service && poetry run pytest || true
-	@cd services/ai-engine-service && poetry run pytest || true
-	@cd services/channel-service && poetry run pytest || true
+	@echo "🧪 Running all tests..."
+	@pytest --cov=shared --cov=services --cov-report=html --cov-report=term-missing
+
+test-unit:
+	@echo "🧪 Running unit tests..."
+	@pytest -m unit --cov=shared --cov=services --cov-report=term-missing
+
+test-integration:
+	@echo "🧪 Running integration tests..."
+	@pytest -m integration --cov=shared --cov=services --cov-report=term-missing
+
+test-e2e:
+	@echo "🧪 Running end-to-end tests..."
+	@pytest -m e2e --cov=shared --cov=services --cov-report=term-missing
+
+test-security:
+	@echo "🔒 Running security tests..."
+	@pytest -m security --cov=shared --cov=services --cov-report=term-missing
+
+test-performance:
+	@echo "⚡ Running performance tests..."
+	@pytest -m performance --benchmark-json=benchmark.json
+
+test-auth:
+	@echo "🔐 Running auth service tests..."
+	@pytest services/auth-service/tests/ --cov=services/auth-service --cov-report=term-missing
+
+test-ai-engine:
+	@echo "🤖 Running AI engine service tests..."
+	@pytest services/ai-engine-service/tests/ --cov=services/ai-engine-service --cov-report=term-missing
+
+test-creator-hub:
+	@echo "🎨 Running creator hub service tests..."
+	@pytest services/creator-hub-service/tests/ --cov=services/creator-hub-service --cov-report=term-missing
+
+test-channel:
+	@echo "📡 Running channel service tests..."
+	@pytest services/channel-service/tests/ --cov=services/channel-service --cov-report=term-missing
+
+test-shared:
+	@echo "🔧 Running shared components tests..."
+	@pytest shared/tests/ --cov=shared --cov-report=term-missing
+
+test-docker:
+	@echo "🐳 Running tests in Docker environment..."
+	@make test-prune
+	@make test-seed
+	@docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit test-runner
+
+test-watch:
+	@echo "👀 Running tests in watch mode..."
+	@pytest --cov=shared --cov=services -f
+
+test-coverage:
+	@echo "📊 Generating test coverage report..."
+	@pytest --cov=shared --cov=services --cov-report=html --cov-report=xml
+	@echo "📊 Coverage report generated in htmlcov/"
+
+test-clean:
+	@echo "🧹 Cleaning test artifacts..."
+	@rm -rf .pytest_cache htmlcov .coverage coverage.xml
+	@find . -name "*.pyc" -delete
+	@find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
 # Run linting
 lint:
@@ -246,7 +328,14 @@ validate-env:
 
 validate-env-service:
 	@echo "🔍 Validating environment variables for $(SERVICE)..."
-	@python scripts/validate-env.py $(SERVICE)
+	@if ! python scripts/validate-env.py $(SERVICE); then \
+		echo "❌ Environment validation failed for $(SERVICE)"; \
+		echo "📋 Saving validation logs..."; \
+		mkdir -p logs; \
+		python scripts/validate-env.py $(SERVICE) > logs/env-validation-$(SERVICE)-$(shell date +%Y%m%d-%H%M%S).log 2>&1 || true; \
+		echo "💾 Validation logs saved to logs/"; \
+		exit 1; \
+	fi
 
 # Service-specific log commands
 auth-logs:
@@ -335,3 +424,276 @@ health:
 	@curl -f http://localhost:8002/health || echo "❌ Creator Hub service unhealthy"
 	@curl -f http://localhost:8003/health || echo "❌ AI Engine service unhealthy"
 	@curl -f http://localhost:8004/health || echo "❌ Channel service unhealthy"
+
+# Code analysis and cleanup
+analyze-dead-code:
+	@echo "🔍 Analyzing dead code..."
+	@python scripts/dead_code_analysis.py
+
+analyze-hardcoded:
+	@echo "🔍 Analyzing hardcoded values..."
+	@python scripts/hardcoded_values_analysis.py
+
+cleanup-env:
+	@echo "🧹 Cleaning up environment variables..."
+	@python scripts/env_cleanup.py
+
+pre-commit:
+	@echo "🔧 Running pre-commit hooks..."
+	@pre-commit run --all-files
+
+pre-commit-install:
+	@echo "🔧 Installing pre-commit hooks..."
+	@pre-commit install
+
+# Test environment setup
+test-setup:
+	@echo "🔧 Setting up test environment..."
+	@echo "🔍 Validating Docker Compose configuration..."
+	@if ! python scripts/validate-compose-services.py docker-compose.test.yml --services postgres-test redis-test --check-health --check-deps; then \
+		echo "❌ Docker Compose validation failed"; \
+		mkdir -p logs; \
+		python scripts/validate-compose-services.py docker-compose.test.yml --services postgres-test redis-test --check-health --check-deps > logs/compose-validation-$(shell date +%Y%m%d-%H%M%S).log 2>&1 || true; \
+		echo "💾 Validation logs saved to logs/"; \
+		exit 1; \
+	fi
+	@echo "🧹 Ensuring clean state..."
+	@make test-clean-volumes
+	@echo "🚀 Starting test services..."
+	@docker-compose -f docker-compose.test.yml up -d postgres-test redis-test
+	@echo "⏳ Waiting for test services to be healthy..."
+	@./scripts/wait-for-test-services.sh
+	@echo "🔍 Validating test setup..."
+	@if ! python scripts/validate-test-setup.py; then \
+		echo "❌ Test setup validation failed"; \
+		echo "📋 Saving validation logs..."; \
+		mkdir -p logs; \
+		python scripts/validate-test-setup.py > logs/test-validation-$(shell date +%Y%m%d-%H%M%S).log 2>&1 || true; \
+		echo "💾 Validation logs saved to logs/"; \
+		exit 1; \
+	fi
+
+test-teardown:
+	@echo "🧹 Tearing down test environment..."
+	@docker-compose -f docker-compose.test.yml down -v
+	@echo "🧹 Cleaning up test volumes..."
+	@docker volume prune -f || true
+
+test-clean-volumes:
+	@echo "🧹 Cleaning test volumes to ensure fresh state..."
+	@python scripts/clean-test-state.py --skip-directories --wait 3
+
+test-clean-all:
+	@echo "🧹 Complete test state cleanup..."
+	@python scripts/clean-test-state.py --wait 5
+
+# Test environment seeding for consistent state
+test-seed:
+	@echo "🌱 Seeding test environment..."
+	@echo "🔄 Resetting test database..."
+	@docker-compose -f docker-compose.test.yml exec -T postgres-test psql -U postgres -d ai_platform_test -c "SELECT cleanup_test_data(true);" || true
+	@echo "📊 Seeding test data..."
+	@python scripts/seed-test-data.py || echo "⚠️  Test seeding script not found"
+	@echo "✅ Test environment seeded"
+
+# Comprehensive test cleanup for CI/CD
+test-prune:
+	@echo "🧹 Pruning test environment for CI/CD..."
+	@echo "🛑 Stopping all test containers..."
+	@docker-compose -f docker-compose.test.yml down -v --remove-orphans || true
+	@echo "🧹 Cleaning test volumes..."
+	@docker volume ls -q | grep -E "(test|Test)" | xargs -r docker volume rm || true
+	@echo "🌐 Cleaning test networks..."
+	@docker network ls -q | xargs -r docker network inspect | grep -l "test\|Test" | xargs -r docker network rm || true
+	@echo "🧹 Pruning unused Docker resources..."
+	@docker system prune -f --volumes
+	@echo "✅ Test environment pruned"
+
+test-validate:
+	@echo "🔍 Validating test configuration..."
+	@if ! python scripts/validate-test-setup.py; then \
+		echo "❌ Test validation failed"; \
+		echo "📋 Saving validation logs..."; \
+		mkdir -p logs; \
+		python scripts/validate-test-setup.py > logs/test-validation-$(shell date +%Y%m%d-%H%M%S).log 2>&1 || true; \
+		echo "💾 Validation logs saved to logs/"; \
+		exit 1; \
+	fi
+
+# CI/CD simulation
+ci-test:
+	@echo "🚀 Running CI/CD test simulation..."
+	@make pre-commit
+	@make analyze-dead-code
+	@make analyze-hardcoded
+	@make test-unit
+	@make test-integration
+	@make test-security
+	@echo "✅ CI/CD simulation completed successfully!"
+
+# 🔧 Testing Infrastructure Improvements
+validate-improvements:
+	@echo "🔍 Validating all testing infrastructure improvements..."
+	@python scripts/validate-all-improvements.py
+
+demo-improvements:
+	@echo "🎬 Demonstrating testing infrastructure improvements..."
+	@python scripts/demo-improvements.py
+
+maintenance-guide:
+	@echo "📋 Generating maintenance guide..."
+	@python scripts/maintenance-guide.py
+
+# Enhanced test validation with logging
+test-validate-enhanced:
+	@echo "🧪 Running enhanced test validation..."
+	@mkdir -p logs
+	@python scripts/validate-test-setup.py
+	@python scripts/validate-compose-services.py docker-compose.test.yml \
+		--services postgres-test redis-test ollama-test chromadb-test \
+		--check-health --check-deps --check-networks --verbose
+
+# Optimized cleanup with single command
+test-clean-optimized:
+	@echo "🧹 Running optimized test cleanup..."
+	@python scripts/clean-test-state.py
+
+# Complete test setup with all improvements
+test-setup-complete:
+	@echo "🚀 Setting up complete test environment with all improvements..."
+	@make test-clean-optimized
+	@make test-validate-enhanced
+	@docker-compose -f docker-compose.test.yml up -d --build
+	@echo "✅ Test environment ready with all optimizations!"
+
+# Performance monitoring
+test-performance-check:
+	@echo "📊 Checking test performance metrics..."
+	@echo "Docker system usage:"
+	@docker system df
+	@echo ""
+	@echo "Test logs size:"
+	@du -sh logs/ 2>/dev/null || echo "No logs directory"
+	@echo ""
+	@echo "Container resource usage:"
+	@docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}" 2>/dev/null || echo "No containers running"
+
+# Security validation
+test-security-check:
+	@echo "🔐 Running security validation..."
+	@echo "Checking for hardcoded secrets in workflow..."
+	@if grep -r "password.*=" .github/workflows/ 2>/dev/null; then \
+		echo "❌ Found potential hardcoded secrets"; \
+	else \
+		echo "✅ No hardcoded secrets found in workflows"; \
+	fi
+	@echo "Checking Docker socket exposure..."
+	@if grep -r "/var/run/docker.sock" docker-compose*.yml 2>/dev/null; then \
+		echo "⚠️  Docker socket exposure found"; \
+	else \
+		echo "✅ No Docker socket exposure found"; \
+	fi
+
+# All-in-one improvement validation
+validate-all:
+	@echo "🎯 Running complete validation of all improvements..."
+	@make validate-improvements
+	@make test-security-check
+	@make test-performance-check
+	@echo "🎉 Complete validation finished!"
+
+# Quick improvement demo
+quick-demo:
+	@echo "⚡ Quick demonstration of key improvements..."
+	@echo ""
+	@echo "1. 🐳 Docker Optimization:"
+	@grep -A 3 "no-install-recommends" Dockerfile.test || echo "   Not found"
+	@echo ""
+	@echo "2. 📝 Enhanced Logging:"
+	@python scripts/validate-compose-services.py docker-compose.test.yml --services postgres-test --verbose 2>/dev/null | head -5 || echo "   Script not available"
+	@echo ""
+	@echo "3. 🧹 Optimized Cleanup:"
+	@python scripts/clean-test-state.py --skip-containers --skip-volumes --wait 0 2>/dev/null | head -3 || echo "   Script not available"
+	@echo ""
+	@echo "✅ Quick demo complete! Run 'make demo-improvements' for full demo."
+
+# Test Redis improvements specifically
+test-redis-improvements:
+	@echo "🔍 Testing Redis validation improvements..."
+	@python scripts/test-redis-improvements.py
+
+# Final comprehensive validation of all improvements
+final-validation:
+	@echo "🎯 Running final comprehensive validation..."
+	@python scripts/final-validation.py
+
+# Maintenance and monitoring commands
+check-dependencies:
+	@echo "🔍 Checking dependencies for security and updates..."
+	@python scripts/check-dependencies.py
+
+setup-performance-monitoring:
+	@echo "📊 Setting up performance monitoring..."
+	@python scripts/setup-performance-monitoring.py
+
+run-performance-tests:
+	@echo "🚀 Running performance benchmarks..."
+	@python scripts/run-performance-tests.py
+
+validate-test-cleanup:
+	@echo "🧹 Validating test data cleanup function..."
+	@python scripts/validate-test-data-cleanup.py
+
+# Maintenance tasks
+maintenance-weekly:
+	@echo "📅 Running weekly maintenance tasks..."
+	@echo "🔍 Checking Docker system usage:"
+	@docker system df || echo "Docker not available"
+	@echo "📋 Checking log files:"
+	@du -sh logs/ 2>/dev/null || echo "No logs directory"
+	@echo "🔐 Checking for security updates:"
+	@python scripts/check-dependencies.py
+
+maintenance-monthly:
+	@echo "📅 Running monthly maintenance tasks..."
+	@echo "🐳 Checking Docker images for updates..."
+	@docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.CreatedAt}}" | head -10 || echo "Docker not available"
+	@echo "📊 Running performance tests..."
+	@python scripts/run-performance-tests.py || echo "Performance tests not available"
+	@echo "🧹 Validating cleanup functions..."
+	@python scripts/validate-test-data-cleanup.py || echo "Database not available"
+
+# Help for new improvement commands
+help-improvements:
+	@echo "🔧 Testing Infrastructure Improvements Commands:"
+	@echo ""
+	@echo "📊 Validation & Monitoring:"
+	@echo "  validate-improvements    - Validate all improvements are working"
+	@echo "  demo-improvements       - Full demonstration of improvements"
+	@echo "  maintenance-guide       - Generate maintenance recommendations"
+	@echo "  validate-all           - Complete validation (improvements + security + performance)"
+	@echo ""
+	@echo "🧪 Enhanced Testing:"
+	@echo "  test-validate-enhanced  - Enhanced test validation with logging"
+	@echo "  test-clean-optimized   - Optimized cleanup (single command)"
+	@echo "  test-setup-complete    - Complete test setup with all improvements"
+	@echo "  test-redis-improvements - Test Redis validation robustness improvements"
+	@echo "  final-validation       - Final comprehensive validation of all improvements"
+	@echo ""
+	@echo "🔧 Maintenance & Monitoring:"
+	@echo "  check-dependencies     - Check for security vulnerabilities and updates"
+	@echo "  setup-performance-monitoring - Set up performance monitoring tools"
+	@echo "  run-performance-tests  - Run performance benchmarks"
+	@echo "  validate-test-cleanup  - Validate test data cleanup function"
+	@echo "  maintenance-weekly     - Run weekly maintenance tasks"
+	@echo "  maintenance-monthly    - Run monthly maintenance tasks"
+	@echo ""
+	@echo "🔍 Monitoring & Security:"
+	@echo "  test-performance-check - Check performance metrics"
+	@echo "  test-security-check    - Validate security improvements"
+	@echo "  quick-demo            - Quick demo of key improvements"
+	@echo ""
+	@echo "💡 Usage Examples:"
+	@echo "  make validate-all      # Complete validation"
+	@echo "  make quick-demo        # Quick overview"
+	@echo "  make demo-improvements # Full demonstration"

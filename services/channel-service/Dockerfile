@@ -25,7 +25,9 @@ RUN echo "fastapi==0.104.0" > requirements.txt && \
     echo "sqlalchemy==2.0.23" >> requirements.txt && \
     echo "asyncpg==0.29.0" >> requirements.txt && \
     echo "redis==5.0.1" >> requirements.txt && \
-    echo "pydantic==2.5.0" >> requirements.txt
+    echo "pydantic[email]==2.5.0" >> requirements.txt && \
+    echo "httpx==0.25.0" >> requirements.txt && \
+    echo "python-dotenv==1.0.0" >> requirements.txt
 
 # Pre-download and build wheels
 RUN pip wheel --wheel-dir /build/wheels -r requirements.txt

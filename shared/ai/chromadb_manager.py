@@ -1,9 +1,11 @@
 """
 ChromaDB Multi-Tenant Manager
 Implements scalable metadata filtering strategy for 100,000+ creators
+
+This module uses centralized environment configuration from shared.config.env_constants
+for all ChromaDB-related settings, with fallback to environment-specific defaults.
 """
 
-import os
 import hashlib
 import logging
 import asyncio
@@ -18,6 +20,12 @@ from chromadb.api.models.Collection import Collection
 from chromadb.api.types import Documents, Embeddings, Metadatas, IDs
 
 from shared.config.settings import get_ai_engine_config
+from shared.config.env_constants import (
+    CHROMADB_URL,
+    CHROMA_SHARD_COUNT,
+    CHROMA_MAX_CONNECTIONS_PER_INSTANCE,
+    get_env_value
+)
 from shared.exceptions.base import BaseServiceException
 
 logger = logging.getLogger(__name__)
@@ -80,46 +88,64 @@ class ChromaDBManager:
         health_check_timeout: int = 5
     ):
         """
-        Initialize ChromaDB manager
+        Initialize ChromaDB manager using centralized configuration
+        
+        Configuration priority:
+        1. Explicit parameters passed to __init__
+        2. Values from get_ai_engine_config() if available
+        3. Centralized environment variables/defaults via get_env_value()
         
         Args:
-            chromadb_url: ChromaDB server URL (defaults to config)
-            shard_count: Number of shards for collections (5-50, defaults to config)
-            max_connections: Max connections per instance (defaults to config)
+            chromadb_url: ChromaDB server URL (defaults to centralized config)
+            shard_count: Number of shards for collections (5-50, defaults to centralized config)
+            max_connections: Max connections per instance (defaults to centralized config)
             health_check_timeout: Health check timeout in seconds
         """
-        # Read configuration directly from environment variables as fallback
-        import os
-        
+        # Try to load AI engine config
         try:
             self.config = get_ai_engine_config()
         except Exception as e:
-            logger.warning(f"Failed to load AI engine config: {str(e)}")
+            logger.warning(f"Failed to load AI engine config, using centralized defaults: {str(e)}")
             self.config = None
         
-        # Configuration with fallbacks - read directly from env if config fails
+        # Configuration with centralized fallbacks
+        # Priority: explicit param -> config object -> centralized env/defaults
         self.chromadb_url = (
-            chromadb_url or 
+            chromadb_url or
             (self.config.chromadb_url if self.config else None) or
-            os.getenv("CHROMADB_URL") or
-            "http://localhost:8000"
+            get_env_value(CHROMADB_URL, fallback=True)
         )
-        self.shard_count = (
-            shard_count or 
+        
+        # Get shard count with proper type conversion
+        shard_count_value = (
+            shard_count or
             (self.config.chroma_shard_count if self.config else None) or
-            int(os.getenv("CHROMA_SHARD_COUNT", "10"))
+            get_env_value(CHROMA_SHARD_COUNT, fallback=True)
         )
-        self.max_connections = (
-            max_connections or 
+        self.shard_count = int(shard_count_value) if shard_count_value else 10
+        
+        # Get max connections with proper type conversion
+        max_connections_value = (
+            max_connections or
             (self.config.chroma_max_connections if self.config else None) or
-            int(os.getenv("CHROMA_MAX_CONNECTIONS_PER_INSTANCE", "10"))
+            get_env_value(CHROMA_MAX_CONNECTIONS_PER_INSTANCE, fallback=True)
         )
+        self.max_connections = int(max_connections_value) if max_connections_value else 10
+        
         self.health_check_timeout = health_check_timeout or 5
         
         # Validate required configuration
         if not self.chromadb_url:
-            logger.error(f"ChromaDB URL not found. chromadb_url={chromadb_url}, config.chromadb_url={getattr(self.config, 'chromadb_url', 'NOT_FOUND')}")
-            raise ValueError("ChromaDB URL is required")
+            logger.error(
+                f"ChromaDB URL not configured. "
+                f"Attempted sources: param={chromadb_url}, "
+                f"config={getattr(self.config, 'chromadb_url', 'NOT_FOUND')}, "
+                f"centralized={get_env_value(CHROMADB_URL, fallback=False)}"
+            )
+            raise ValueError(
+                "ChromaDB URL is required. Please set it via parameter, "
+                "AI engine config, or the CHROMADB_URL environment variable."
+            )
         
         # Validate shard count
         if not 5 <= self.shard_count <= 50:
