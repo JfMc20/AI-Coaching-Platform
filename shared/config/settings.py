@@ -40,6 +40,9 @@ from shared.config.env_constants import (
     REQUIRED_VARS_BY_SERVICE
 )
 
+# Logger declaration for better clarity and maintainability
+logger = logging.getLogger(__name__)
+
 
 def safe_int_env(env_var: str, default: int, fallback: bool = True) -> int:
     """
@@ -55,15 +58,23 @@ def safe_int_env(env_var: str, default: int, fallback: bool = True) -> int:
     """
     try:
         value = get_env_value(env_var, fallback=fallback)
-        if value is not None:
-            return int(value)
+        if value is None:
+            return default
+        
+        # Strip whitespace and handle empty strings
+        value_stripped = value.strip()
+        if not value_stripped:
+            return default
+        
+        # Check if string contains only numeric characters (with optional minus sign)
+        if not (value_stripped.isdigit() or (value_stripped.startswith('-') and value_stripped[1:].isdigit())):
+            logger.warning(f"Environment variable {env_var}='{value}' contains non-numeric characters. Using default: {default}")
+            return default
+        
+        return int(value_stripped)
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Failed to convert {env_var}='{value}' to int: {e}. Using default: {default}")
         return default
-    except (ValueError, TypeError):
-        logger.warning(f"Failed to convert {env_var} to integer, using default {default}")
-        return default
-
-
-logger = logging.getLogger(__name__)
 
 
 def validate_service_environment(required_vars: List[str], logger: Optional[logging.Logger] = None) -> None:
@@ -149,15 +160,22 @@ def get_database_url_with_validation(
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
     
-    # Validate scheme before conversion
-    if not (database_url.startswith("postgresql://") or database_url.startswith("postgresql+asyncpg://")):
-        raise ValueError(f"{DATABASE_URL} must use postgresql:// or postgresql+asyncpg:// scheme")
+    # Validate scheme before conversion - allow SQLite for development
+    allowed_schemes = ["postgresql://", "postgresql+asyncpg://", "sqlite://", "sqlite+aiosqlite://"]
+    if not any(database_url.startswith(scheme) for scheme in allowed_schemes):
+        raise ValueError(f"{DATABASE_URL} must use one of these schemes: {', '.join(allowed_schemes)}")
     
     # Convert between sync and async URLs based on async_url parameter
-    if async_url and database_url.startswith("postgresql://"):
-        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    elif not async_url and database_url.startswith("postgresql+asyncpg://"):
-        database_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    if async_url:
+        if database_url.startswith("postgresql://"):
+            database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif database_url.startswith("sqlite://"):
+            database_url = database_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
+    else:
+        if database_url.startswith("postgresql+asyncpg://"):
+            database_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        elif database_url.startswith("sqlite+aiosqlite://"):
+            database_url = database_url.replace("sqlite+aiosqlite://", "sqlite://", 1)
     
     return database_url
 
@@ -210,15 +228,10 @@ class BaseConfig(BaseSettings):
         env=RATE_LIMIT_PER_HOUR
     )
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-        
-        @classmethod
-        def parse_env_var(cls, field_name: str, raw_val: str) -> Any:
-            if field_name in ['cors_origins', 'allowed_hosts']:
-                return [x.strip() for x in raw_val.split(',')]
-            return cls.json_loads(raw_val)
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": False,
+    }
     
     @field_validator('cors_origins', 'allowed_hosts', mode='before')
     @classmethod
@@ -230,6 +243,9 @@ class BaseConfig(BaseSettings):
     @field_validator('log_level')
     @classmethod
     def validate_log_level(cls, v):
+        if not isinstance(v, str):
+            raise ValueError(f"Log level must be a string, got {type(v).__name__}: {v}")
+        
         valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
         if v.upper() not in valid_levels:
             raise ValueError(f'log_level must be one of {valid_levels}')
@@ -261,6 +277,9 @@ class AuthServiceConfig(BaseConfig):
     @field_validator('jwt_secret_key')
     @classmethod
     def validate_jwt_secret(cls, v):
+        if not isinstance(v, str):
+            raise ValueError(f"JWT secret must be a string, got {type(v).__name__}: {v}")
+        
         if len(v) < 16:
             logger.warning("JWT secret key is shorter than recommended (16+ characters)")
         if v in ['secret', 'changeme', 'your-secret-key']:
@@ -406,25 +425,34 @@ class VaultConfig(BaseSettings):
         env=VAULT_ENABLED
     )
     
-    class Config:
-        env_file = ".env"
+    model_config = {
+        "env_file": ".env"
+    }
 
 
 def validate_required_env_vars(required_vars: List[str]) -> Dict[str, str]:
     """
-    Validate that required environment variables are set
+    Validate that required environment variables are set.
     
-    Updated to use centralized environment validation from env_constants.
+    Args:
+        required_vars: List of environment variable names to validate
+        
+    Returns:
+        Dict mapping variable names to their raw values (may be None or falsey
+        to accurately represent the environment state)
+        
+    Raises:
+        RuntimeError: If any required variable is missing (None)
     """
     is_valid, missing_vars = validate_environment_variables(required_vars)
     if not is_valid:
         raise RuntimeError(f"Missing required environment variables: {missing_vars}")
     
-    # Build return dictionary with actual values - ensure all requested keys are present
+    # Build return dictionary with actual values - return raw values without coercion
     env_vars = {}
     for var in required_vars:
         value = get_env_value(var, fallback=True)
-        env_vars[var] = value or ""  # Include even empty/falsey values
+        env_vars[var] = value  # Return raw value without coercion
     
     return env_vars
 

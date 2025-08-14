@@ -16,8 +16,8 @@ from shared.config.settings import validate_service_environment
 # Import centralized environment constants and helpers
 from shared.config.env_constants import CORS_ORIGINS, JWT_SECRET_KEY, REQUIRED_VARS_BY_SERVICE, get_env_value
 
-from .database import get_db_manager, init_database, close_db
-from .routes.auth import router as auth_router
+from services.auth_service.app.database import get_db_manager, init_database, close_db
+from services.auth_service.app.routes.auth import router as auth_router
 
 # Configure logging
 logging.basicConfig(
