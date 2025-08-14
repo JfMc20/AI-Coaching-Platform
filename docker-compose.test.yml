@@ -29,13 +29,10 @@ services:
       -c log_min_duration_statement=1000
       -c checkpoint_completion_target=0.9
       -c default_statistics_target=100
-      -c fsync=off
-      -c synchronous_commit=off
-      -c full_page_writes=off
-    # WARNING: The above durability flags (fsync=off, synchronous_commit=off, full_page_writes=off)
-    # are INTENTIONALLY DISABLED for performance in ephemeral test environments only.
-    # These settings risk data loss and corruption and should NEVER be used in production
-    # or any persistent environment. Use only for temporary test databases that can be rebuilt.
+      -c synchronous_commit=local
+    # SAFETY: Using safe PostgreSQL settings for test environment
+    # Data durability is maintained while still optimizing for test performance
+    # The tmpfs mount ensures data is ephemeral and rebuilt for each test run
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ai_platform_test"]
       interval: 5s
@@ -112,7 +109,7 @@ services:
       - ENVIRONMENT=testing
       - DATABASE_URL=postgresql://postgres:postgres@postgres-test:5432/ai_platform_test
       - REDIS_URL=redis://redis-test:6379/0
-      - JWT_SECRET_KEY=test-secret-key-for-testing-only
+      - JWT_SECRET_KEY=${TEST_JWT_SECRET_KEY}
       - CORS_ORIGINS=["http://localhost:3000"]
       - DEBUG=false
       - LOG_LEVEL=INFO
@@ -248,7 +245,7 @@ services:
       - CHANNEL_SERVICE_URL=http://channel-service-test:8004
       - OLLAMA_URL=http://ollama-test:11434
       - CHROMADB_URL=http://chromadb-test:8000
-      - JWT_SECRET_KEY=test-secret-key-for-testing-only
+      - JWT_SECRET_KEY=${TEST_JWT_SECRET_KEY}
     depends_on:
       postgres-test:
         condition: service_healthy

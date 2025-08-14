@@ -1,8 +1,11 @@
-# Docker Compose Configuration
-# Environment variable names and defaults are centralized in shared/config/env_constants.py
-# All variable names and fallback values come from ENVIRONMENT_DEFAULTS['development']
+# Docker Compose Configuration - Enhanced for Production Readiness
+# Version: 2.0
+# Improvements: Centralized logging, resource limits, secrets management,
+#               optimized build contexts, and flexible port mapping.
 
-# YAML Anchors for common configurations
+# ===================================================================
+#  YAML Anchors for Reusable Configurations
+# ===================================================================
 x-common-variables: &common-variables
   POSTGRES_DB: ${POSTGRES_DB:-ai_platform_dev}
   POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -11,23 +14,35 @@ x-common-variables: &common-variables
 x-database-url: &database-url
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_platform_dev}
 
+x-logging-defaults: &logging-defaults 
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-resource-limits: &resource-limits 
+  resources:
+    limits:
+      cpus: '0.75'
+      memory: 512M
+    reservations:
+      cpus: '0.25'
+      memory: 256M
+
 x-service-defaults: &service-defaults
   networks:
     - mvp-network
   restart: unless-stopped
+  logging: *logging-defaults
 
 x-app-service-defaults: &app-service-defaults
   <<: *service-defaults
+  deploy: *resource-limits
   depends_on:
-    - postgres
-    - redis
-
-x-build-defaults: &build-defaults
-  context: .
-  cache_from:
-    - python:3.11-slim
-  args:
-    BUILDKIT_INLINE_CACHE: 1
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
 
 x-healthcheck-defaults: &healthcheck-defaults
   interval: 30s
@@ -35,15 +50,17 @@ x-healthcheck-defaults: &healthcheck-defaults
   retries: 3
   start_period: 30s
 
+# ===================================================================
+#  Services Definition
+# ===================================================================
 services:
-  # Database Services
+  # -------------------- Database & Cache Services --------------------
   postgres:
     image: postgres:15-alpine
     container_name: mvp-postgres
-    environment:
-      <<: *common-variables
+    environment: *common-variables
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432" 
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
@@ -58,7 +75,7 @@ services:
     image: redis:7-alpine
     container_name: mvp-redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379" 
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -69,207 +86,131 @@ services:
       retries: 5
     <<: *service-defaults
 
-  # AI/ML Services
+  # -------------------- AI/ML Services --------------------
   ollama:
     image: ollama/ollama:latest
     container_name: mvp-ollama
     ports:
-      - "11434:11434"
+      - "${OLLAMA_PORT:-11434}:11434" 
     volumes:
       - ollama_data:/root/.ollama
     environment:
       - OLLAMA_HOST=0.0.0.0
+    deploy: *resource-limits 
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "pgrep ollama || exit 1"]
+      test: ["CMD-SHELL", "pgrep ollama > /dev/null || exit 1"]
     <<: *service-defaults
 
   chromadb:
     image: chromadb/chroma:0.4.15
     container_name: mvp-chromadb
     ports:
-      - "8000:8000"
+      - "${CHROMADB_PORT:-8000}:8000" # <-- MEJORA: Puerto flexible
     volumes:
       - chromadb_data:/chroma/chroma
-    environment:
-      - CHROMA_SERVER_HOST=0.0.0.0
-      - CHROMA_SERVER_HTTP_PORT=8000
+    deploy: *resource-limits # <-- MEJORA: Limitar recursos de IA
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "test -f /proc/1/stat || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/heartbeat || exit 1"]
     <<: *service-defaults
 
-  # Application Services
+  # -------------------- Application Services --------------------
   auth-service:
     build:
-      <<: *build-defaults
-      dockerfile: ./services/auth-service/Dockerfile
+      context: ./services/auth-service 
+      dockerfile: Dockerfile
     container_name: mvp-auth-service
     ports:
-      - "8001:8001"
+      - "${AUTH_SERVICE_PORT:-8001}:8001" 
+    secrets: 
+      - jwt_secret_key
     environment:
       <<: *database-url
-      # Redis configuration - using database /0 for auth-service
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      # JWT/Authentication configuration
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-key-change-in-production}
-      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
-      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
-      JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-7}
-      JWT_AUDIENCE: ${JWT_AUDIENCE:-ai-platform-dev}
-      JWT_ISSUER: ${JWT_ISSUER:-ai-platform-auth-dev}
-      # Security configuration
-      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000", "http://localhost:8080"]}
-      MAX_FAILED_LOGIN_ATTEMPTS: ${MAX_FAILED_LOGIN_ATTEMPTS:-5}
-      ACCOUNT_LOCKOUT_DURATION_MINUTES: ${ACCOUNT_LOCKOUT_DURATION_MINUTES:-30}
-      PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: ${PASSWORD_RESET_TOKEN_EXPIRE_MINUTES:-60}
-      # Rate limiting configuration
-      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
-      RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-1000}
-      # Environment configuration
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      DEBUG: ${DEBUG:-true}
-      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
-      SQL_ECHO: ${SQL_ECHO:-true}
-      SLOW_QUERY_THRESHOLD: ${SLOW_QUERY_THRESHOLD:-1.0}
-      # Database configuration
-      DB_AUTO_CREATE: ${DB_AUTO_CREATE:-true}
+      JWT_SECRET_KEY_FILE: /run/secrets/jwt_secret_key 
       PORT: 8001
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5)"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
     <<: *app-service-defaults
 
   creator-hub-service:
     build:
-      <<: *build-defaults
-      dockerfile: ./services/creator-hub-service/Dockerfile
+      context: ./services/creator-hub-service 
+      dockerfile: Dockerfile
     container_name: mvp-creator-hub-service
     ports:
-      - "8002:8002"
+      - "${CREATOR_HUB_PORT:-8002}:8002" 
     environment:
       <<: *database-url
-      # Redis configuration - using database /1 for creator-hub-service
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
-      # Service URL configuration
       AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8001}
       AI_ENGINE_SERVICE_URL: ${AI_ENGINE_SERVICE_URL:-http://ai-engine-service:8003}
-      # File upload configuration
-      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-10485760}
-      UPLOADS_DIR: ${UPLOADS_DIR:-./uploads}
-      SUPPORTED_FORMATS: ${SUPPORTED_FORMATS:-["pdf", "txt", "docx", "md"]}
-      # Security configuration
-      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000", "http://localhost:8080"]}
-      # Rate limiting configuration
-      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
-      RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-1000}
-      # Environment configuration
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      DEBUG: ${DEBUG:-true}
-      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
-      SQL_ECHO: ${SQL_ECHO:-true}
-      SLOW_QUERY_THRESHOLD: ${SLOW_QUERY_THRESHOLD:-1.0}
       PORT: 8002
     volumes:
       - uploads_data:/app/uploads
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=5)"]
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
     depends_on:
-      - postgres
-      - redis
-      - auth-service
-    <<: *service-defaults
+      auth-service:
+        condition: service_healthy
+    <<: *app-service-defaults
 
   ai-engine-service:
     build:
-      <<: *build-defaults
-      dockerfile: ./services/ai-engine-service/Dockerfile
+      context: ./services/ai-engine-service 
+      dockerfile: Dockerfile
     container_name: mvp-ai-engine-service
     ports:
-      - "8003:8003"
+      - "${AI_ENGINE_PORT:-8003}:8003"
     environment:
       <<: *database-url
-      # Redis configuration - using database /2 for ai-engine-service
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/2}
-      # AI service configuration
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       CHROMADB_URL: ${CHROMADB_URL:-http://chromadb:8000}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
-      CHAT_MODEL: ${CHAT_MODEL:-llama3.2}
-      CHROMA_SHARD_COUNT: ${CHROMA_SHARD_COUNT:-1}
-      CHROMA_MAX_CONNECTIONS_PER_INSTANCE: ${CHROMA_MAX_CONNECTIONS_PER_INSTANCE:-10}
-      DEFAULT_CHUNK_SIZE: ${DEFAULT_CHUNK_SIZE:-1000}
-      DEFAULT_CHUNK_OVERLAP: ${DEFAULT_CHUNK_OVERLAP:-200}
-      # Security configuration
-      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000", "http://localhost:8080"]}
-      # Rate limiting configuration
-      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
-      RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-1000}
-      # Environment configuration
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      DEBUG: ${DEBUG:-true}
-      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
-      SQL_ECHO: ${SQL_ECHO:-true}
-      SLOW_QUERY_THRESHOLD: ${SLOW_QUERY_THRESHOLD:-1.0}
       PORT: 8003
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health', timeout=5)"]
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
     depends_on:
-      - postgres
-      - redis
-      - ollama
-      - chromadb
-    <<: *service-defaults
+      ollama:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    <<: *app-service-defaults
 
   channel-service:
     build:
-      <<: *build-defaults
-      dockerfile: ./services/channel-service/Dockerfile
+      context: ./services/channel-service 
+      dockerfile: Dockerfile
     container_name: mvp-channel-service
     ports:
-      - "8004:8004"
+      - "${CHANNEL_SERVICE_PORT:-8004}:8004" 
     environment:
       <<: *database-url
-      # Redis configuration - using database /3 for channel-service
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/3}
-      # Service URL configuration
       AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8001}
       AI_ENGINE_SERVICE_URL: ${AI_ENGINE_SERVICE_URL:-http://ai-engine-service:8003}
-      # Security configuration
-      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000", "http://localhost:8080"]}
-      # Rate limiting configuration
-      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
-      RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-1000}
-      # WebSocket configuration
-      WEBSOCKET_TIMEOUT: ${WEBSOCKET_TIMEOUT:-60}
-      MAX_CONNECTIONS_PER_INSTANCE: ${MAX_CONNECTIONS_PER_INSTANCE:-100}
-      HEARTBEAT_INTERVAL: ${HEARTBEAT_INTERVAL:-30}
-      # Environment configuration
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      DEBUG: ${DEBUG:-true}
-      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
-      SQL_ECHO: ${SQL_ECHO:-true}
-      SLOW_QUERY_THRESHOLD: ${SLOW_QUERY_THRESHOLD:-1.0}
       PORT: 8004
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health', timeout=5)"]
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
     depends_on:
-      - postgres
-      - redis
-      - auth-service
-      - ai-engine-service
-    <<: *service-defaults
+      auth-service:
+        condition: service_healthy
+      ai-engine-service:
+        condition: service_healthy
+    <<: *app-service-defaults
 
-  # API Gateway
+  # -------------------- API Gateway --------------------
   nginx:
     image: nginx:alpine
     container_name: mvp-nginx
     ports:
-      - "80:80"
-      - "443:443"
+      - "${NGINX_HTTP_PORT:-80}:80"   
+      - "${NGINX_HTTPS_PORT:-443}:443" 
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
@@ -279,12 +220,19 @@ services:
       timeout: 10s
       retries: 3
     depends_on:
-      - auth-service
-      - creator-hub-service
-      - ai-engine-service
-      - channel-service
+      auth-service:
+        condition: service_healthy
+      creator-hub-service:
+        condition: service_healthy
+      ai-engine-service:
+        condition: service_healthy
+      channel-service:
+        condition: service_healthy
     <<: *service-defaults
 
+# ===================================================================
+#  Volumes and Networks
+# ===================================================================
 volumes:
   postgres_data:
   redis_data:
@@ -295,3 +243,10 @@ volumes:
 networks:
   mvp-network:
     driver: bridge
+
+# ===================================================================
+#  Secrets Management
+# ===================================================================
+secrets:
+  jwt_secret_key:
+    file: ./secrets/jwt_secret.txt

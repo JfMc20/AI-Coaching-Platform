@@ -247,7 +247,7 @@ class ImprovementDemo:
         print("      🐛 Error handling: 100% coverage in validation scripts")
         print("      📝 Logging: Structured output for better debugging")
     
-    async def run_full_demo(self):
+    def run_full_demo(self):
         """Run the complete demonstration."""
         print("🎬 Testing Infrastructure Improvements Demonstration")
         print("=" * 70)
@@ -283,15 +283,15 @@ class ImprovementDemo:
         print("=" * 70)
 
 
-async def main():
+def main():
     """Main demonstration function."""
     demo = ImprovementDemo()
-    await demo.run_full_demo()
+    demo.run_full_demo()
 
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()
     except KeyboardInterrupt:
         print("\n⚠️  Demonstration interrupted by user")
         sys.exit(1)

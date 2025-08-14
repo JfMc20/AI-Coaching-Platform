@@ -57,7 +57,8 @@ def check_pip_audit(requirements_file: str) -> bool:
                     print(f"   - {package} {version}: {advisory}")
                 if len(vulnerabilities) > 5:
                     print(f"   ... and {len(vulnerabilities) - 5} more")
-                return False
+                print(f"🚨 Security audit failed with {len(vulnerabilities)} vulnerabilities")
+                sys.exit(1)
             else:
                 print(f"✅ No security vulnerabilities found in {requirements_file}")
                 return True
@@ -158,7 +159,12 @@ def main():
     """Main function."""
     try:
         success = generate_dependency_report()
-        sys.exit(0 if success else 1)
+        if not success:
+            print("❌ Dependency check failed - security vulnerabilities or outdated packages found")
+            sys.exit(1)
+        else:
+            print("✅ All dependency checks passed")
+            sys.exit(0)
     except KeyboardInterrupt:
         print("\n⚠️  Dependency check interrupted by user")
         sys.exit(1)

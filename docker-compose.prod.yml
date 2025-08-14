@@ -1,6 +1,11 @@
 # Docker Compose para producción
 # Uso: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
+# SECURITY REQUIREMENTS:
+# - All services require JWT_SECRET_KEY, DATABASE_URL, REDIS_URL to be set
+# - Run scripts/validate-production-env.py before deployment
+# - Never use default/empty values for security-critical variables
+#
 # NOTA: Todas las variables de entorno y sus valores por defecto de producción
 # están definidos centralizadamente en shared/config/env_constants.py
 # Este archivo utiliza el patrón ${VAR:-default} para permitir sobrescribir
@@ -13,7 +18,7 @@ services:
       # Required variables for auth service
       - DATABASE_URL=${DATABASE_URL:-}
       - REDIS_URL=${REDIS_URL:-}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-RS256}
       # Environment configuration from centralized system
       - ENVIRONMENT=${ENVIRONMENT:-production}
@@ -195,16 +200,23 @@ services:
           cpus: '0.25'
           memory: 256M
 
+  # Ollama AI Model Server
+  # SYSTEM REQUIREMENTS for AI Models:
+  # - CPU: 4+ cores recommended for concurrent requests
+  # - RAM: 16GB+ host memory (8GB minimum for quantized models)
+  # - GPU VRAM: 4-8GB for quantized Llama 3.2 3B, 8GB+ for larger models
+  # - Storage: 10GB+ for model files
+  # - Concurrency: Each concurrent request uses ~2-4GB additional RAM
   ollama:
     restart: always
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 4G
+          cpus: '4.0'
+          memory: 16G  # Increased for production AI workloads
         reservations:
-          cpus: '1.0'
-          memory: 2G
+          cpus: '2.0'
+          memory: 8G   # Minimum for quantized models
 
   chromadb:
     restart: always

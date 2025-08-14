@@ -146,7 +146,7 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         REDIS_URL: "redis://localhost:6379/0",
         
         # JWT/Auth
-        JWT_SECRET_KEY: "dev-secret-key-change-in-production",
+        JWT_SECRET_KEY: "dev-7f8a9b2c4d6e1f3a5b7c9d2e4f6a8b0c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d2e4f6a8b0c",
         JWT_ALGORITHM: "HS256",
         JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "30",
         JWT_REFRESH_TOKEN_EXPIRE_DAYS: "7",
@@ -175,8 +175,8 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         CHANNEL_SERVICE_URL: "http://localhost:8004",
         
         # Security
-        CORS_ORIGINS: '["http://localhost:3000", "http://localhost:8080"]',
-        ALLOWED_HOSTS: '["localhost", "127.0.0.1"]',
+        CORS_ORIGINS: "http://localhost:3000,http://localhost:8080",
+        ALLOWED_HOSTS: "localhost,127.0.0.1",
         MAX_FAILED_LOGIN_ATTEMPTS: "5",
         ACCOUNT_LOCKOUT_DURATION_MINUTES: "30",
         PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: "60",
@@ -184,7 +184,7 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         # File Upload
         MAX_UPLOAD_SIZE: "10485760",  # 10MB
         UPLOADS_DIR: "./uploads",
-        SUPPORTED_FORMATS: '["pdf", "txt", "docx", "md"]',
+        SUPPORTED_FORMATS: "pdf,txt,docx,md",
         
         # Environment
         ENVIRONMENT: "development",
@@ -254,7 +254,7 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         REDIS_URL: "redis://redis:6379/1",
         
         # JWT/Auth
-        JWT_SECRET_KEY: "test-secret-key",
+        JWT_SECRET_KEY: "test-9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c",
         JWT_ALGORITHM: "HS256",
         JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "5",
         JWT_REFRESH_TOKEN_EXPIRE_DAYS: "1",
@@ -283,8 +283,8 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         CHANNEL_SERVICE_URL: "http://channel-service:8004",
         
         # Security
-        CORS_ORIGINS: '["http://localhost:3000"]',
-        ALLOWED_HOSTS: '["localhost", "127.0.0.1", "auth-service", "ai-engine-service"]',
+        CORS_ORIGINS: "http://localhost:3000",
+        ALLOWED_HOSTS: "localhost,127.0.0.1,auth-service,ai-engine-service",
         MAX_FAILED_LOGIN_ATTEMPTS: "3",
         ACCOUNT_LOCKOUT_DURATION_MINUTES: "5",
         PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: "30",
@@ -292,7 +292,7 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         # File Upload
         MAX_UPLOAD_SIZE: "5242880",  # 5MB
         UPLOADS_DIR: "/tmp/test_uploads",
-        SUPPORTED_FORMATS: '["pdf", "txt"]',
+        SUPPORTED_FORMATS: "pdf,txt",
         
         # Environment
         ENVIRONMENT: "testing",
@@ -409,7 +409,7 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         # File Upload
         MAX_UPLOAD_SIZE: "52428800",  # 50MB
         UPLOADS_DIR: "/var/lib/uploads",
-        SUPPORTED_FORMATS: '["pdf", "txt", "docx", "md", "csv", "json"]',
+        SUPPORTED_FORMATS: "pdf,txt,docx,md,csv,json",
         
         # Environment
         ENVIRONMENT: "production",

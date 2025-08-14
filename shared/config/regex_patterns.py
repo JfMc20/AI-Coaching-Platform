@@ -153,20 +153,20 @@ MIGRATION_CANDIDATES = '|'.join([
 # SEARCH AND REPLACE HELPERS
 # ============================================================================
 
-def create_replacement_pattern(old_var: str, new_constant: str) -> str:
+def create_replacement_pattern(old_var: str, new_constant: str) -> List[Tuple[str, str]]:
     """
-    Generate a regex pattern for safe replacement of environment variable references.
+    Generate a list of regex patterns for safe replacement of environment variable references.
     
     Args:
         old_var: The old variable name (e.g., "DATABASE_URL")
         new_constant: The new constant reference (e.g., "env_constants.DATABASE_URL")
     
     Returns:
-        str: A regex replacement pattern
+        List[Tuple[str, str]]: A list of (pattern, replacement) tuples for different usage contexts
     
     Example:
-        >>> pattern = create_replacement_pattern("DATABASE_URL", "env_constants.DATABASE_URL")
-        >>> # This will create a pattern to replace os.getenv("DATABASE_URL") with get_env_value(env_constants.DATABASE_URL)
+        >>> patterns = create_replacement_pattern("DATABASE_URL", "env_constants.DATABASE_URL")
+        >>> # This will create patterns to replace os.getenv("DATABASE_URL") with get_env_value(env_constants.DATABASE_URL)
     """
     # Escape special regex characters in the old variable name
     escaped_var = re.escape(old_var)

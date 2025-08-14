@@ -116,21 +116,21 @@ class ChromaDBManager:
             get_env_value(CHROMADB_URL, fallback=True)
         )
         
-        # Get shard count with proper type conversion
+        # Get shard count with safe type conversion
         shard_count_value = (
             shard_count or
             (self.config.chroma_shard_count if self.config else None) or
             get_env_value(CHROMA_SHARD_COUNT, fallback=True)
         )
-        self.shard_count = int(shard_count_value) if shard_count_value else 10
+        self.shard_count = self._safe_int_conversion(shard_count_value, "shard_count", 10, min_val=1, max_val=50)
         
-        # Get max connections with proper type conversion
+        # Get max connections with safe type conversion
         max_connections_value = (
             max_connections or
             (self.config.chroma_max_connections if self.config else None) or
             get_env_value(CHROMA_MAX_CONNECTIONS_PER_INSTANCE, fallback=True)
         )
-        self.max_connections = int(max_connections_value) if max_connections_value else 10
+        self.max_connections = self._safe_int_conversion(max_connections_value, "max_connections", 10, min_val=1)
         
         self.health_check_timeout = health_check_timeout or 5
         
@@ -165,6 +165,44 @@ class ChromaDBManager:
             f"shard_count: {self.shard_count}, "
             f"max_connections: {self.max_connections}"
         )
+    
+    def _safe_int_conversion(self, value: Any, field_name: str, default: int, min_val: int = None, max_val: int = None) -> int:
+        """
+        Safely convert a value to integer with validation and fallback.
+        
+        Args:
+            value: The value to convert
+            field_name: Name of the field for logging
+            default: Default value to use on conversion failure
+            min_val: Optional minimum value constraint
+            max_val: Optional maximum value constraint
+            
+        Returns:
+            int: The converted integer value or default
+        """
+        if value is None:
+            return default
+        
+        try:
+            converted = int(value)
+            
+            # Apply constraints
+            if min_val is not None and converted < min_val:
+                logger.warning(f"{field_name} value {converted} is below minimum {min_val}, using {min_val}")
+                converted = min_val
+            
+            if max_val is not None and converted > max_val:
+                logger.warning(f"{field_name} value {converted} is above maximum {max_val}, using {max_val}")
+                converted = max_val
+            
+            return converted
+            
+        except (ValueError, TypeError) as e:
+            logger.warning(
+                f"Failed to convert {field_name} value '{value}' to integer: {e}. "
+                f"Using default value {default}"
+            )
+            return default
     
     def _get_shard_name(self, creator_id: str) -> str:
         """

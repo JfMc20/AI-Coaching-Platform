@@ -10,6 +10,7 @@ import re
 import ast
 from typing import Dict, List, Set, Tuple
 from pathlib import Path
+from datetime import datetime
 
 
 class EnvCleanup:
@@ -149,7 +150,7 @@ class EnvCleanup:
         """Generate a cleanup report."""
         report = []
         report.append("# Environment Variable Cleanup Report")
-        report.append(f"Generated on: {os.popen('date').read().strip()}")
+        report.append(f"Generated on: {datetime.now().isoformat()}")
         report.append("")
         
         # Summary
@@ -239,9 +240,10 @@ class EnvCleanup:
         
         return '\n'.join(cleaned_lines)
     
-    def run_cleanup(self) -> None:
+    def run_cleanup(self, dry_run: bool = False) -> None:
         """Run the complete cleanup process."""
-        print("🚀 Starting environment variable cleanup...")
+        mode_text = "DRY RUN - " if dry_run else ""
+        print(f"🚀 Starting environment variable cleanup... {mode_text}")
         print("=" * 60)
         
         # Step 1: Scan codebase for usage
@@ -256,33 +258,37 @@ class EnvCleanup:
         # Step 4: Generate report
         report = self.generate_cleanup_report()
         
-        # Step 5: Save report
+        # Step 5: Save report (always save report, even in dry run)
         report_file = self.project_root / "env_cleanup_report.md"
         with open(report_file, 'w', encoding='utf-8') as f:
             f.write(report)
         
         print(f"📊 Cleanup report saved to: {report_file}")
         
-        # Step 6: Create cleaned version (optional)
-        cleaned_content = self.create_cleaned_env_constants()
-        if cleaned_content:
-            backup_file = self.project_root / "shared" / "config" / "env_constants.py.backup"
-            cleaned_file = self.project_root / "shared" / "config" / "env_constants_cleaned.py"
-            
-            # Create backup
-            with open(backup_file, 'w', encoding='utf-8') as f:
-                with open(self.env_constants_file, 'r', encoding='utf-8') as orig:
-                    f.write(orig.read())
-            
-            # Save cleaned version
-            with open(cleaned_file, 'w', encoding='utf-8') as f:
-                f.write(cleaned_content)
-            
-            print(f"💾 Backup saved to: {backup_file}")
-            print(f"🧹 Cleaned version saved to: {cleaned_file}")
+        # Step 6: Create cleaned version (only if not dry run)
+        if not dry_run:
+            cleaned_content = self.create_cleaned_env_constants()
+            if cleaned_content:
+                backup_file = self.project_root / "shared" / "config" / "env_constants.py.backup"
+                cleaned_file = self.project_root / "shared" / "config" / "env_constants_cleaned.py"
+                
+                # Create backup
+                with open(backup_file, 'w', encoding='utf-8') as f:
+                    with open(self.env_constants_file, 'r', encoding='utf-8') as orig:
+                        f.write(orig.read())
+                
+                # Save cleaned version
+                with open(cleaned_file, 'w', encoding='utf-8') as f:
+                    f.write(cleaned_content)
+                
+                print(f"💾 Backup saved to: {backup_file}")
+                print(f"🧹 Cleaned version saved to: {cleaned_file}")
+        else:
+            print("🔍 DRY RUN: No files were modified. Only report generated.")
         
         print("=" * 60)
-        print("✅ Environment variable cleanup completed!")
+        completion_text = "DRY RUN completed!" if dry_run else "Environment variable cleanup completed!"
+        print(f"✅ {completion_text}")
         
         # Print summary
         print(f"\n📈 Summary:")
@@ -311,7 +317,7 @@ def main():
     args = parser.parse_args()
     
     cleanup = EnvCleanup(args.project_root)
-    cleanup.run_cleanup()
+    cleanup.run_cleanup(dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

@@ -9,8 +9,9 @@ import os
 import sys
 import re
 from pathlib import Path
-from typing import Dict, List, Set, Tuple, Any
+from typing import Dict, List, Set, Tuple, Any, Union
 import argparse
+from datetime import datetime
 
 # Try to import centralized regex patterns
 try:
@@ -55,10 +56,14 @@ class DeadCodeAnalyzer(ast.NodeVisitor):
             self.imports[name] = node.lineno
         self.generic_visit(node)
     
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        """Visit function definitions."""
+    def _record_function(self, node: Union[ast.FunctionDef, ast.AsyncFunctionDef]) -> None:
+        """Record function name if it meets criteria."""
         if not node.name.startswith('_') or node.name in ['__init__', '__str__', '__repr__']:
             self.functions[node.name] = node.lineno
+    
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        """Visit function definitions."""
+        self._record_function(node)
         
         old_function = self.current_function
         self.current_function = node.name
@@ -67,8 +72,7 @@ class DeadCodeAnalyzer(ast.NodeVisitor):
     
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         """Visit async function definitions."""
-        if not node.name.startswith('_') or node.name in ['__init__', '__str__', '__repr__']:
-            self.functions[node.name] = node.lineno
+        self._record_function(node)
         
         old_function = self.current_function
         self.current_function = node.name
@@ -235,63 +239,57 @@ class ProjectDeadCodeAnalyzer:
         
         return unused_classes
     
-    def find_hardcoded_values(self) -> Dict[str, List[Tuple[str, int]]]:
-        """Find hardcoded values using regex patterns."""
-        if not HAS_REGEX_PATTERNS:
-            return {}
-            
-        hardcoded_values = {}
+    def _search_files_by_pattern(self, patterns: List[re.Pattern], message_formatter) -> Dict[str, List[Tuple[str, int]]]:
+        """Search files using regex patterns and format messages."""
+        results = {}
         
         for file_path in self.python_files:
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
                 
-                file_issues = []
+                file_matches = []
                 
-                # Find localhost URLs
-                for match in re.finditer(LOCALHOST_URL_PATTERN, content):
-                    line_no = content[:match.start()].count('\n') + 1
-                    file_issues.append((f"Hardcoded localhost URL: {match.group()}", line_no))
+                for pattern in patterns:
+                    for match in re.finditer(pattern, content):
+                        line_no = content[:match.start()].count('\n') + 1
+                        message = message_formatter(match)
+                        file_matches.append((message, line_no))
                 
-                # Find potential secrets
-                for match in re.finditer(HARDCODED_SECRET_PATTERN, content):
-                    line_no = content[:match.start()].count('\n') + 1
-                    file_issues.append((f"Potential hardcoded secret: {match.group()}", line_no))
-                
-                if file_issues:
-                    hardcoded_values[str(file_path)] = file_issues
+                if file_matches:
+                    results[str(file_path)] = file_matches
                     
             except (UnicodeDecodeError, PermissionError):
                 continue
                 
-        return hardcoded_values
+        return results
+    
+    def find_hardcoded_values(self) -> Dict[str, List[Tuple[str, int]]]:
+        """Find hardcoded values using regex patterns."""
+        if not HAS_REGEX_PATTERNS:
+            return {}
+        
+        patterns = [LOCALHOST_URL_PATTERN, HARDCODED_SECRET_PATTERN]
+        
+        def format_hardcoded_message(match):
+            if "localhost" in match.group().lower():
+                return f"Hardcoded localhost URL: {match.group()}"
+            else:
+                return f"Potential hardcoded secret: {match.group()}"
+        
+        return self._search_files_by_pattern(patterns, format_hardcoded_message)
     
     def find_todo_comments(self) -> Dict[str, List[Tuple[str, int]]]:
         """Find TODO/FIXME comments using regex patterns."""
         if not HAS_REGEX_PATTERNS:
             return {}
-            
-        todo_comments = {}
         
-        for file_path in self.python_files:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
-                file_todos = []
-                
-                for match in re.finditer(TODO_FIXME_PATTERN, content):
-                    line_no = content[:match.start()].count('\n') + 1
-                    file_todos.append((match.group().strip(), line_no))
-                
-                if file_todos:
-                    todo_comments[str(file_path)] = file_todos
-                    
-            except (UnicodeDecodeError, PermissionError):
-                continue
-                
-        return todo_comments
+        patterns = [TODO_FIXME_PATTERN]
+        
+        def format_todo_message(match):
+            return match.group().strip()
+        
+        return self._search_files_by_pattern(patterns, format_todo_message)
 
     def generate_report(self) -> str:
         """Generate a dead code analysis report."""
@@ -303,7 +301,7 @@ class ProjectDeadCodeAnalyzer:
         
         report = []
         report.append("# Dead Code Analysis Report")
-        report.append(f"Generated on: {os.popen('date').read().strip()}")
+        report.append(f"Generated on: {datetime.now().isoformat()}")
         report.append("")
         
         # Summary

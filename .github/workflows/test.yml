@@ -283,8 +283,8 @@ jobs:
         
     - name: Wait for services to be ready
       run: |
-        timeout 300 bash -c 'until docker-compose -f docker-compose.test.yml exec -T postgres-test pg_isready -U postgres; do sleep 5; done'
-        timeout 300 bash -c 'until docker-compose -f docker-compose.test.yml exec -T redis-test redis-cli ping; do sleep 5; done'
+        timeout 300 bash -c 'until docker-compose -f docker-compose.test.yml run --rm postgres-test pg_isready -U postgres; do sleep 5; done'
+        timeout 300 bash -c 'until docker-compose -f docker-compose.test.yml run --rm redis-test redis-cli ping; do sleep 5; done'
         
     - name: Run database migrations
       run: |
@@ -471,14 +471,28 @@ jobs:
       with:
         script: |
           const fs = require('fs');
-          const summary = fs.readFileSync('test-summary.md', 'utf8');
           
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: summary
-          });
+          try {
+            // Check if test summary file exists
+            if (!fs.existsSync('test-summary.md')) {
+              console.log('⚠️  test-summary.md not found, skipping comment creation');
+              return;
+            }
+            
+            const summary = fs.readFileSync('test-summary.md', 'utf8');
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+            
+            console.log('✅ Successfully posted test summary comment');
+          } catch (error) {
+            console.error('❌ Failed to create comment:', error.message);
+            core.setFailed(`Failed to post test summary: ${error.message}`);
+          }
 
   # Cleanup
   cleanup:

@@ -200,50 +200,50 @@ clean:
 	@docker-compose down -v --remove-orphans
 	@docker system prune -f
 
-# Testing commands
+# Testing commands - All tests now run via Poetry environment
 test:
 	@echo "🧪 Running all tests..."
-	@pytest --cov=shared --cov=services --cov-report=html --cov-report=term-missing
+	@poetry run pytest --cov=shared --cov=services --cov-report=html --cov-report=term-missing
 
 test-unit:
 	@echo "🧪 Running unit tests..."
-	@pytest -m unit --cov=shared --cov=services --cov-report=term-missing
+	@poetry run pytest tests/unit/ --cov=shared --cov=services --cov-report=term-missing
 
 test-integration:
 	@echo "🧪 Running integration tests..."
-	@pytest -m integration --cov=shared --cov=services --cov-report=term-missing
+	@poetry run pytest -m integration --cov=shared --cov=services --cov-report=term-missing
 
 test-e2e:
 	@echo "🧪 Running end-to-end tests..."
-	@pytest -m e2e --cov=shared --cov=services --cov-report=term-missing
+	@poetry run pytest -m e2e --cov=shared --cov=services --cov-report=term-missing
 
 test-security:
 	@echo "🔒 Running security tests..."
-	@pytest -m security --cov=shared --cov=services --cov-report=term-missing
+	@poetry run pytest -m security --cov=shared --cov=services --cov-report=term-missing
 
 test-performance:
 	@echo "⚡ Running performance tests..."
-	@pytest -m performance --benchmark-json=benchmark.json
+	@poetry run pytest -m performance --benchmark-json=benchmark.json
 
 test-auth:
 	@echo "🔐 Running auth service tests..."
-	@pytest services/auth-service/tests/ --cov=services/auth-service --cov-report=term-missing
+	@poetry run pytest tests/unit/auth-service/ --cov=services/auth-service --cov-report=term-missing
 
 test-ai-engine:
 	@echo "🤖 Running AI engine service tests..."
-	@pytest services/ai-engine-service/tests/ --cov=services/ai-engine-service --cov-report=term-missing
+	@poetry run pytest tests/unit/ai-engine-service/ --cov=services/ai-engine-service --cov-report=term-missing
 
 test-creator-hub:
 	@echo "🎨 Running creator hub service tests..."
-	@pytest services/creator-hub-service/tests/ --cov=services/creator-hub-service --cov-report=term-missing
+	@poetry run pytest tests/unit/creator-hub-service/ --cov=services/creator-hub-service --cov-report=term-missing
 
 test-channel:
 	@echo "📡 Running channel service tests..."
-	@pytest services/channel-service/tests/ --cov=services/channel-service --cov-report=term-missing
+	@poetry run pytest tests/unit/channel-service/ --cov=services/channel-service --cov-report=term-missing
 
 test-shared:
 	@echo "🔧 Running shared components tests..."
-	@pytest shared/tests/ --cov=shared --cov-report=term-missing
+	@poetry run pytest tests/shared/ --cov=shared --cov-report=term-missing
 
 test-docker:
 	@echo "🐳 Running tests in Docker environment..."
@@ -253,11 +253,11 @@ test-docker:
 
 test-watch:
 	@echo "👀 Running tests in watch mode..."
-	@pytest --cov=shared --cov=services -f
+	@poetry run pytest --cov=shared --cov=services -f
 
 test-coverage:
 	@echo "📊 Generating test coverage report..."
-	@pytest --cov=shared --cov=services --cov-report=html --cov-report=xml
+	@poetry run pytest --cov=shared --cov=services --cov-report=html --cov-report=xml
 	@echo "📊 Coverage report generated in htmlcov/"
 
 test-clean:
@@ -266,32 +266,21 @@ test-clean:
 	@find . -name "*.pyc" -delete
 	@find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
-# Run linting
+# Run linting - All services now use unified workspace dependencies
 lint:
 	@echo "🔍 Running linting..."
-	@cd shared && poetry run flake8 . || true
-	@cd services/auth-service && poetry run flake8 . || true
-	@cd services/creator-hub-service && poetry run flake8 . || true
-	@cd services/ai-engine-service && poetry run flake8 . || true
-	@cd services/channel-service && poetry run flake8 . || true
+	@poetry run flake8 shared/ services/
 
-# Format code
+# Format code - All services now use unified workspace dependencies
 format:
 	@echo "✨ Formatting code..."
-	@cd shared && poetry run black . && poetry run isort . || true
-	@cd services/auth-service && poetry run black . && poetry run isort . || true
-	@cd services/creator-hub-service && poetry run black . && poetry run isort . || true
-	@cd services/ai-engine-service && poetry run black . && poetry run isort . || true
-	@cd services/channel-service && poetry run black . && poetry run isort . || true
+	@poetry run black shared/ services/
+	@poetry run isort shared/ services/
 
-# Install dependencies
+# Install dependencies - All services now use unified workspace dependencies
 install-deps:
 	@echo "📦 Installing dependencies..."
-	@cd shared && poetry install
-	@cd services/auth-service && poetry install
-	@cd services/creator-hub-service && poetry install
-	@cd services/ai-engine-service && poetry install
-	@cd services/channel-service && poetry install
+	@poetry install --with dev
 
 # Setup development credentials
 dev-credentials:
@@ -324,7 +313,7 @@ vault-logs:
 # Environment validation
 validate-env:
 	@echo "🔍 Validating environment variables..."
-	@python scripts/validate-env.py
+	@poetry run python scripts/validate-env.py
 
 validate-env-service:
 	@echo "🔍 Validating environment variables for $(SERVICE)..."
@@ -397,17 +386,17 @@ db-shell:
 
 db-migrate:
 	@echo "🚀 Running database migrations..."
-	@python scripts/run-migrations.py
+	@poetry run python scripts/run-migrations.py
 
 db-reset:
 	@echo "🔄 Resetting database..."
 	@docker-compose exec postgres psql -U postgres -c "DROP DATABASE IF EXISTS mvp_coaching"
 	@docker-compose exec postgres psql -U postgres -c "CREATE DATABASE mvp_coaching"
-	@python scripts/run-migrations.py
+	@poetry run python scripts/run-migrations.py
 
 db-seed:
 	@echo "🌱 Seeding database with development data..."
-	@alembic upgrade head
+	@poetry run alembic upgrade head
 
 redis-shell:
 	@docker-compose exec redis redis-cli
@@ -415,7 +404,7 @@ redis-shell:
 # Multi-tenant testing
 test-isolation:
 	@echo "🔒 Testing multi-tenant data isolation..."
-	@python -m pytest tests/test_multi_tenant_isolation.py -v
+	@poetry run python -m pytest tests/test_multi_tenant_isolation.py -v
 
 # Health checks
 health:
@@ -428,23 +417,23 @@ health:
 # Code analysis and cleanup
 analyze-dead-code:
 	@echo "🔍 Analyzing dead code..."
-	@python scripts/dead_code_analysis.py
+	@poetry run python scripts/dead_code_analysis.py
 
 analyze-hardcoded:
 	@echo "🔍 Analyzing hardcoded values..."
-	@python scripts/hardcoded_values_analysis.py
+	@poetry run python scripts/hardcoded_values_analysis.py
 
 cleanup-env:
 	@echo "🧹 Cleaning up environment variables..."
-	@python scripts/env_cleanup.py
+	@poetry run python scripts/env_cleanup.py
 
 pre-commit:
 	@echo "🔧 Running pre-commit hooks..."
-	@pre-commit run --all-files
+	@poetry run pre-commit run --all-files
 
 pre-commit-install:
 	@echo "🔧 Installing pre-commit hooks..."
-	@pre-commit install
+	@poetry run pre-commit install
 
 # Test environment setup
 test-setup:
@@ -481,11 +470,11 @@ test-teardown:
 
 test-clean-volumes:
 	@echo "🧹 Cleaning test volumes to ensure fresh state..."
-	@python scripts/clean-test-state.py --skip-directories --wait 3
+	@poetry run python scripts/clean-test-state.py --skip-directories --wait 3
 
 test-clean-all:
 	@echo "🧹 Complete test state cleanup..."
-	@python scripts/clean-test-state.py --wait 5
+	@poetry run python scripts/clean-test-state.py --wait 5
 
 # Test environment seeding for consistent state
 test-seed:
@@ -493,7 +482,7 @@ test-seed:
 	@echo "🔄 Resetting test database..."
 	@docker-compose -f docker-compose.test.yml exec -T postgres-test psql -U postgres -d ai_platform_test -c "SELECT cleanup_test_data(true);" || true
 	@echo "📊 Seeding test data..."
-	@python scripts/seed-test-data.py || echo "⚠️  Test seeding script not found"
+	@poetry run python scripts/seed-test-data.py || echo "⚠️  Test seeding script not found"
 	@echo "✅ Test environment seeded"
 
 # Comprehensive test cleanup for CI/CD
@@ -534,29 +523,29 @@ ci-test:
 # 🔧 Testing Infrastructure Improvements
 validate-improvements:
 	@echo "🔍 Validating all testing infrastructure improvements..."
-	@python scripts/validate-all-improvements.py
+	@poetry run python scripts/validate-all-improvements.py
 
 demo-improvements:
 	@echo "🎬 Demonstrating testing infrastructure improvements..."
-	@python scripts/demo-improvements.py
+	@poetry run python scripts/demo-improvements.py
 
 maintenance-guide:
 	@echo "📋 Generating maintenance guide..."
-	@python scripts/maintenance-guide.py
+	@poetry run python scripts/maintenance-guide.py
 
 # Enhanced test validation with logging
 test-validate-enhanced:
 	@echo "🧪 Running enhanced test validation..."
 	@mkdir -p logs
-	@python scripts/validate-test-setup.py
-	@python scripts/validate-compose-services.py docker-compose.test.yml \
+	@poetry run python scripts/validate-test-setup.py
+	@poetry run python scripts/validate-compose-services.py docker-compose.test.yml \
 		--services postgres-test redis-test ollama-test chromadb-test \
 		--check-health --check-deps --check-networks --verbose
 
 # Optimized cleanup with single command
 test-clean-optimized:
 	@echo "🧹 Running optimized test cleanup..."
-	@python scripts/clean-test-state.py
+	@poetry run python scripts/clean-test-state.py
 
 # Complete test setup with all improvements
 test-setup-complete:
@@ -610,39 +599,39 @@ quick-demo:
 	@grep -A 3 "no-install-recommends" Dockerfile.test || echo "   Not found"
 	@echo ""
 	@echo "2. 📝 Enhanced Logging:"
-	@python scripts/validate-compose-services.py docker-compose.test.yml --services postgres-test --verbose 2>/dev/null | head -5 || echo "   Script not available"
+	@poetry run python scripts/validate-compose-services.py docker-compose.test.yml --services postgres-test --verbose 2>/dev/null | head -5 || echo "   Script not available"
 	@echo ""
 	@echo "3. 🧹 Optimized Cleanup:"
-	@python scripts/clean-test-state.py --skip-containers --skip-volumes --wait 0 2>/dev/null | head -3 || echo "   Script not available"
+	@poetry run python scripts/clean-test-state.py --skip-containers --skip-volumes --wait 0 2>/dev/null | head -3 || echo "   Script not available"
 	@echo ""
 	@echo "✅ Quick demo complete! Run 'make demo-improvements' for full demo."
 
 # Test Redis improvements specifically
 test-redis-improvements:
 	@echo "🔍 Testing Redis validation improvements..."
-	@python scripts/test-redis-improvements.py
+	@poetry run python scripts/test-redis-improvements.py
 
 # Final comprehensive validation of all improvements
 final-validation:
 	@echo "🎯 Running final comprehensive validation..."
-	@python scripts/final-validation.py
+	@poetry run python scripts/final-validation.py
 
 # Maintenance and monitoring commands
 check-dependencies:
 	@echo "🔍 Checking dependencies for security and updates..."
-	@python scripts/check-dependencies.py
+	@poetry run python scripts/check-dependencies.py
 
 setup-performance-monitoring:
 	@echo "📊 Setting up performance monitoring..."
-	@python scripts/setup-performance-monitoring.py
+	@poetry run python scripts/setup-performance-monitoring.py
 
 run-performance-tests:
 	@echo "🚀 Running performance benchmarks..."
-	@python scripts/run-performance-tests.py
+	@poetry run python scripts/run-performance-tests.py
 
 validate-test-cleanup:
 	@echo "🧹 Validating test data cleanup function..."
-	@python scripts/validate-test-data-cleanup.py
+	@poetry run python scripts/validate-test-data-cleanup.py
 
 # Maintenance tasks
 maintenance-weekly:
@@ -652,16 +641,16 @@ maintenance-weekly:
 	@echo "📋 Checking log files:"
 	@du -sh logs/ 2>/dev/null || echo "No logs directory"
 	@echo "🔐 Checking for security updates:"
-	@python scripts/check-dependencies.py
+	@poetry run python scripts/check-dependencies.py
 
 maintenance-monthly:
 	@echo "📅 Running monthly maintenance tasks..."
 	@echo "🐳 Checking Docker images for updates..."
 	@docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.CreatedAt}}" | head -10 || echo "Docker not available"
 	@echo "📊 Running performance tests..."
-	@python scripts/run-performance-tests.py || echo "Performance tests not available"
+	@poetry run python scripts/run-performance-tests.py || echo "Performance tests not available"
 	@echo "🧹 Validating cleanup functions..."
-	@python scripts/validate-test-data-cleanup.py || echo "Database not available"
+	@poetry run python scripts/validate-test-data-cleanup.py || echo "Database not available"
 
 # Help for new improvement commands
 help-improvements:

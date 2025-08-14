@@ -41,6 +41,28 @@ from shared.config.env_constants import (
 )
 
 
+def safe_int_env(env_var: str, default: int, fallback: bool = True) -> int:
+    """
+    Safely convert environment variable to integer with fallback.
+    
+    Args:
+        env_var: Environment variable name
+        default: Default value if conversion fails
+        fallback: Whether to use environment defaults
+        
+    Returns:
+        int: Converted integer or default value
+    """
+    try:
+        value = get_env_value(env_var, fallback=fallback)
+        if value is not None:
+            return int(value)
+        return default
+    except (ValueError, TypeError):
+        logger.warning(f"Failed to convert {env_var} to integer, using default {default}")
+        return default
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -180,11 +202,11 @@ class BaseConfig(BaseSettings):
     
     # Rate limiting - using centralized constants and defaults
     rate_limit_per_minute: int = Field(
-        default=int(get_env_value(RATE_LIMIT_PER_MINUTE, fallback=True) or "100"),
+        default_factory=lambda: safe_int_env(RATE_LIMIT_PER_MINUTE, 100),
         env=RATE_LIMIT_PER_MINUTE
     )
     rate_limit_per_hour: int = Field(
-        default=int(get_env_value(RATE_LIMIT_PER_HOUR, fallback=True) or "1000"),
+        default_factory=lambda: safe_int_env(RATE_LIMIT_PER_HOUR, 1000),
         env=RATE_LIMIT_PER_HOUR
     )
     
@@ -228,11 +250,11 @@ class AuthServiceConfig(BaseConfig):
         env=JWT_ALGORITHM
     )
     access_token_expire_minutes: int = Field(
-        default=int(get_env_value(JWT_ACCESS_TOKEN_EXPIRE_MINUTES, fallback=True) or "1440"),
+        default_factory=lambda: safe_int_env(JWT_ACCESS_TOKEN_EXPIRE_MINUTES, 1440),
         env=JWT_ACCESS_TOKEN_EXPIRE_MINUTES
     )
     refresh_token_expire_days: int = Field(
-        default=int(get_env_value(JWT_REFRESH_TOKEN_EXPIRE_DAYS, fallback=True) or "30"),
+        default_factory=lambda: safe_int_env(JWT_REFRESH_TOKEN_EXPIRE_DAYS, 30),
         env=JWT_REFRESH_TOKEN_EXPIRE_DAYS
     )
     
@@ -259,15 +281,15 @@ class CreatorHubServiceConfig(BaseConfig):
     
     # File Upload Configuration - using centralized constants and defaults
     max_upload_size: int = Field(
-        default=int(get_env_value(MAX_UPLOAD_SIZE, fallback=True) or "52428800"),  # 50MB
+        default_factory=lambda: safe_int_env(MAX_UPLOAD_SIZE, 52428800),  # 50MB
         env=MAX_UPLOAD_SIZE
     )
     uploads_dir: str = Field(
-        default=get_env_value(UPLOADS_DIR, fallback=True) or "./uploads",
+        default_factory=lambda: get_env_value(UPLOADS_DIR, fallback=True) or "./uploads",
         env=UPLOADS_DIR
     )
     supported_formats: List[str] = Field(
-        default=(get_env_value(SUPPORTED_FORMATS, fallback=True) or "pdf,txt,docx,md").split(","),
+        default_factory=lambda: (get_env_value(SUPPORTED_FORMATS, fallback=True) or "pdf,txt,docx,md").split(","),
         env=SUPPORTED_FORMATS
     )
     
@@ -308,21 +330,21 @@ class AIEngineServiceConfig(BaseConfig):
     
     # ChromaDB Configuration - using centralized constants and defaults
     chroma_shard_count: int = Field(
-        default=int(get_env_value(CHROMA_SHARD_COUNT, fallback=True) or "10"),
+        default_factory=lambda: safe_int_env(CHROMA_SHARD_COUNT, 10),
         env=CHROMA_SHARD_COUNT
     )
     chroma_max_connections: int = Field(
-        default=int(get_env_value(CHROMA_MAX_CONNECTIONS_PER_INSTANCE, fallback=True) or "10"),
+        default_factory=lambda: safe_int_env(CHROMA_MAX_CONNECTIONS_PER_INSTANCE, 10),
         env=CHROMA_MAX_CONNECTIONS_PER_INSTANCE
     )
     
     # Processing Configuration - using centralized constants and defaults
     default_chunk_size: int = Field(
-        default=int(get_env_value(DEFAULT_CHUNK_SIZE, fallback=True) or "1000"),
+        default_factory=lambda: safe_int_env(DEFAULT_CHUNK_SIZE, 1000),
         env=DEFAULT_CHUNK_SIZE
     )
     default_chunk_overlap: int = Field(
-        default=int(get_env_value(DEFAULT_CHUNK_OVERLAP, fallback=True) or "200"),
+        default_factory=lambda: safe_int_env(DEFAULT_CHUNK_OVERLAP, 200),
         env=DEFAULT_CHUNK_OVERLAP
     )
     
@@ -347,15 +369,15 @@ class ChannelServiceConfig(BaseConfig):
     
     # WebSocket Configuration - using centralized constants and defaults
     websocket_timeout: int = Field(
-        default=int(get_env_value(WEBSOCKET_TIMEOUT, fallback=True) or "300"),
+        default_factory=lambda: safe_int_env(WEBSOCKET_TIMEOUT, 300),
         env=WEBSOCKET_TIMEOUT
     )
     max_connections_per_instance: int = Field(
-        default=int(get_env_value(MAX_CONNECTIONS_PER_INSTANCE, fallback=True) or "1000"),
+        default_factory=lambda: safe_int_env(MAX_CONNECTIONS_PER_INSTANCE, 1000),
         env=MAX_CONNECTIONS_PER_INSTANCE
     )
     heartbeat_interval: int = Field(
-        default=int(get_env_value(HEARTBEAT_INTERVAL, fallback=True) or "30"),
+        default_factory=lambda: safe_int_env(HEARTBEAT_INTERVAL, 30),
         env=HEARTBEAT_INTERVAL
     )
 
@@ -398,12 +420,11 @@ def validate_required_env_vars(required_vars: List[str]) -> Dict[str, str]:
     if not is_valid:
         raise RuntimeError(f"Missing required environment variables: {missing_vars}")
     
-    # Build return dictionary with actual values
+    # Build return dictionary with actual values - ensure all requested keys are present
     env_vars = {}
     for var in required_vars:
         value = get_env_value(var, fallback=True)
-        if value:
-            env_vars[var] = value
+        env_vars[var] = value or ""  # Include even empty/falsey values
     
     return env_vars
 

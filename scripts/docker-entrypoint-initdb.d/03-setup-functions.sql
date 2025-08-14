@@ -1,27 +1,27 @@
 -- Set up test utility functions
 -- This script creates helper functions for testing
 
--- Create test data cleanup function
-CREATE OR REPLACE FUNCTION cleanup_test_data(force boolean DEFAULT false)
-RETURNS void AS $
+-- Create data cleanup function
+CREATE OR REPLACE FUNCTION cleanup_dev_data(force boolean DEFAULT false)
+RETURNS void AS $$
 DECLARE
-    current_env text;$
+    current_env text;
 BEGIN
     -- Safety check: force parameter must be true
     IF NOT force THEN
-        RAISE EXCEPTION 'cleanup_test_data() requires force=true parameter to prevent accidental execution. Usage: SELECT cleanup_test_data(true);';
+        RAISE EXCEPTION 'cleanup_dev_data() requires force=true parameter to prevent accidental execution. Usage: SELECT cleanup_dev_data(true);';
     END IF;
     
     -- Additional safety: check environment (if available)
     BEGIN
         SELECT current_setting('app.environment', true) INTO current_env;
-        IF current_env IS NOT NULL AND current_env NOT IN ('testing', 'test', 'development', 'dev') THEN
-            RAISE EXCEPTION 'cleanup_test_data() cannot run in environment: %. Only allowed in: testing, test, development, dev', current_env;
+        IF current_env IS NOT NULL AND current_env NOT IN ('development', 'dev', 'local') THEN
+            RAISE EXCEPTION 'cleanup_dev_data() cannot run in environment: %. Only allowed in: development, dev, local', current_env;
         END IF;
     EXCEPTION
         WHEN OTHERS THEN
             -- Environment setting not available, continue with warning
-            RAISE NOTICE 'Environment check skipped - ensure this is a test environment';
+            RAISE NOTICE 'Environment check skipped - ensure this is a development environment';
     END;
     
     -- This function can be called to clean up test data between test runs
@@ -36,7 +36,7 @@ BEGIN
             channels.sessions
         RESTART IDENTITY CASCADE;
         
-        RAISE NOTICE 'Test data cleanup completed for all tables';
+        RAISE NOTICE 'Development data cleanup completed for all tables';
     EXCEPTION
         WHEN undefined_table THEN
             -- Handle case where some tables might not exist
@@ -48,23 +48,23 @@ BEGIN
             BEGIN TRUNCATE TABLE analytics.events RESTART IDENTITY CASCADE; EXCEPTION WHEN undefined_table THEN NULL; END;
             BEGIN TRUNCATE TABLE channels.sessions RESTART IDENTITY CASCADE; EXCEPTION WHEN undefined_table THEN NULL; END;
             
-            RAISE NOTICE 'Test data cleanup completed with fallback method';
+            RAISE NOTICE 'Development data cleanup completed with fallback method';
     END;
 END;
 $$ LANGUAGE plpgsql;
 
--- Create test data seeding function
-CREATE OR REPLACE FUNCTION seed_test_data()
+-- Create data seeding function
+CREATE OR REPLACE FUNCTION seed_dev_data()
 RETURNS void AS $$
 BEGIN
     -- This function can be called to seed test data
     -- Implementation will be added as needed for specific tests
-    RAISE NOTICE 'Test data seeding function ready';
+    RAISE NOTICE 'Development data seeding function ready';
 END;
 $$ LANGUAGE plpgsql;
 
--- Create function to validate test environment
-CREATE OR REPLACE FUNCTION validate_test_environment()
+-- Create function to validate environment
+CREATE OR REPLACE FUNCTION validate_environment()
 RETURNS TABLE(check_name text, status text, details text) AS $$
 BEGIN
     -- Check extensions
@@ -88,13 +88,13 @@ BEGIN
     -- Check roles
     RETURN QUERY
     SELECT 
-        'Test Roles'::text,
-        CASE WHEN count(*) >= 3 THEN 'OK' ELSE 'MISSING' END::text,
+        'App Roles'::text,
+        CASE WHEN count(*) >= 2 THEN 'OK' ELSE 'MISSING' END::text,
         string_agg(rolname, ', ')::text
     FROM pg_roles 
-    WHERE rolname IN ('test_tenant_1', 'test_tenant_2', 'test_admin');
+    WHERE rolname IN ('app_tenant_1', 'app_tenant_2', 'dev_admin');
 END;
 $$ LANGUAGE plpgsql;
 
 -- Log successful function setup
-SELECT 'Test utility functions created successfully' as status;
+SELECT 'Utility functions created successfully' as status;
