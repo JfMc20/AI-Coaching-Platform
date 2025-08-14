@@ -273,10 +273,10 @@ USAGE EXAMPLES:
 1. Finding all environment variable usage:
    ```bash
    # Using grep with the patterns
-   grep -r -E 'os\.getenv\s*\(\s*["\'][^"\']+["\']\s*(?:,\s*[^)]+)?\s*\)' .
+   grep -r -E 'os\\.getenv\\s*\\(\\s*["\'][^"\']+["\']\\s*(?:,\\s*[^)]+)?\\s*\\)' .
    
    # Finding all Field(env=...) definitions
-   grep -r -E 'Field\s*\([^)]*\benv\s*=\s*["\'][^"\']+["\'][^)]*\)' .
+   grep -r -E 'Field\\s*\\([^)]*\\benv\\s*=\\s*["\'][^"\']+["\'][^)]*\\)' .
    ```
 
 2. Identifying hardcoded values:

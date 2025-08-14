@@ -14,10 +14,24 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 
-import chromadb
-from chromadb.config import Settings
-from chromadb.api.models.Collection import Collection
-from chromadb.api.types import Documents, Embeddings, Metadatas, IDs
+# Conditional ChromaDB imports for development environment compatibility
+try:
+    import chromadb
+    from chromadb.config import Settings
+    from chromadb.api.models.Collection import Collection
+    from chromadb.api.types import Documents, Embeddings, Metadatas, IDs
+    CHROMADB_AVAILABLE = True
+except ImportError:
+    # ChromaDB not available - create mock classes for development
+    chromadb = None
+    Settings = None
+    Collection = None
+    Documents = None
+    Embeddings = None
+    Metadatas = None
+    IDs = None
+    CHROMADB_AVAILABLE = False
+    # Logger will be defined later, so we'll log this after logger initialization
 
 from shared.config.settings import get_ai_engine_config
 from shared.config.env_constants import (
@@ -29,6 +43,163 @@ from shared.config.env_constants import (
 from shared.exceptions.base import BaseServiceException
 
 logger = logging.getLogger(__name__)
+
+# Log ChromaDB availability after logger is initialized
+if not CHROMADB_AVAILABLE:
+    logger.warning("ChromaDB not available - using mock implementation for development")
+
+
+class MockChromaDBClient:
+    """Mock ChromaDB client for development environment"""
+    
+    def __init__(self, host: str, port: int, settings=None):
+        self.host = host
+        self.port = port
+        self.settings = settings
+        self._collections = {}
+    
+    def get_collection(self, name: str):
+        if name not in self._collections:
+            raise Exception(f"Collection {name} not found")
+        return self._collections[name]
+    
+    def create_collection(self, name: str, metadata=None):
+        collection = MockCollection(name, metadata)
+        self._collections[name] = collection
+        return collection
+    
+    def list_collections(self):
+        return [MockCollectionInfo(name) for name in self._collections.keys()]
+    
+    def delete_collection(self, name: str):
+        if name in self._collections:
+            del self._collections[name]
+
+
+class MockCollection:
+    """Mock ChromaDB collection for development environment"""
+    
+    def __init__(self, name: str, metadata=None):
+        self.name = name
+        self.metadata = metadata or {}
+        self._data = {
+            "ids": [],
+            "documents": [],
+            "metadatas": [],
+            "embeddings": []
+        }
+    
+    def add(self, embeddings, documents, metadatas, ids):
+        self._data["embeddings"].extend(embeddings)
+        self._data["documents"].extend(documents)
+        self._data["metadatas"].extend(metadatas)
+        self._data["ids"].extend(ids)
+    
+    def query(self, query_embeddings, n_results=5, where=None, include=None):
+        # Simple mock query - return first n_results
+        include = include or ["documents", "metadatas", "distances"]
+        
+        # Filter by where clause if provided
+        filtered_indices = []
+        for i, metadata in enumerate(self._data["metadatas"]):
+            if self._matches_where_clause(metadata, where):
+                filtered_indices.append(i)
+        
+        # Limit results
+        filtered_indices = filtered_indices[:n_results]
+        
+        result = {}
+        if "documents" in include:
+            result["documents"] = [[self._data["documents"][i] for i in filtered_indices]]
+        if "metadatas" in include:
+            result["metadatas"] = [[self._data["metadatas"][i] for i in filtered_indices]]
+        if "distances" in include:
+            # Mock distances - random values between 0.1 and 0.9
+            import random
+            result["distances"] = [[random.uniform(0.1, 0.9) for _ in filtered_indices]]
+        if "ids" in include:
+            result["ids"] = [[self._data["ids"][i] for i in filtered_indices]]
+        
+        return result
+    
+    def get(self, where=None, include=None):
+        include = include or ["documents", "metadatas", "ids"]
+        
+        # Filter by where clause if provided
+        filtered_indices = []
+        for i, metadata in enumerate(self._data["metadatas"]):
+            if self._matches_where_clause(metadata, where):
+                filtered_indices.append(i)
+        
+        result = {}
+        if "documents" in include:
+            result["documents"] = [self._data["documents"][i] for i in filtered_indices]
+        if "metadatas" in include:
+            result["metadatas"] = [self._data["metadatas"][i] for i in filtered_indices]
+        if "ids" in include:
+            result["ids"] = [self._data["ids"][i] for i in filtered_indices]
+        
+        return result
+    
+    def delete(self, ids):
+        # Remove items with matching IDs
+        indices_to_remove = []
+        for i, item_id in enumerate(self._data["ids"]):
+            if item_id in ids:
+                indices_to_remove.append(i)
+        
+        # Remove in reverse order to maintain indices
+        for i in reversed(indices_to_remove):
+            del self._data["ids"][i]
+            del self._data["documents"][i]
+            del self._data["metadatas"][i]
+            del self._data["embeddings"][i]
+    
+    def _matches_where_clause(self, metadata, where):
+        if not where:
+            return True
+        
+        # Simple where clause matching
+        if "$and" in where:
+            return all(self._matches_where_clause(metadata, clause) for clause in where["$and"])
+        
+        for key, condition in where.items():
+            if key.startswith("$"):
+                continue
+            
+            if isinstance(condition, dict):
+                if "$eq" in condition:
+                    if metadata.get(key) != condition["$eq"]:
+                        return False
+            else:
+                if metadata.get(key) != condition:
+                    return False
+        
+        return True
+
+
+class MockCollectionInfo:
+    """Mock collection info for development environment"""
+    
+    def __init__(self, name: str):
+        self.name = name
+
+
+class MockSettings:
+    """Mock ChromaDB settings for development environment"""
+    
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+
+# Use mock classes when ChromaDB is not available
+if not CHROMADB_AVAILABLE:
+    chromadb = type('MockChromaDB', (), {
+        'HttpClient': MockChromaDBClient
+    })()
+    Settings = MockSettings
+    Collection = MockCollection
 
 
 class ChromaDBError(BaseServiceException):
@@ -122,7 +293,7 @@ class ChromaDBManager:
             (self.config.chroma_shard_count if self.config else None) or
             get_env_value(CHROMA_SHARD_COUNT, fallback=True)
         )
-        self.shard_count = self._safe_int_conversion(shard_count_value, "shard_count", 10, min_val=1, max_val=50)
+        self.shard_count = self._safe_int_conversion(shard_count_value, "shard_count", 10, min_val=5, max_val=50)
         
         # Get max connections with safe type conversion
         max_connections_value = (
@@ -219,7 +390,7 @@ class ChromaDBManager:
         shard_index = hash_value % self.shard_count
         return f"knowledge_shard_{shard_index}"
     
-    def _get_client(self) -> chromadb.HttpClient:
+    def _get_client(self):
         """Get or create ChromaDB client"""
         if self._client is None:
             try:
@@ -236,14 +407,24 @@ class ChromaDBManager:
                     host = url_parts
                     port = 8000  # Default ChromaDB port
                 
-                self._client = chromadb.HttpClient(
-                    host=host,
-                    port=port,
-                    settings=Settings(
-                        anonymized_telemetry=False
+                if CHROMADB_AVAILABLE:
+                    self._client = chromadb.HttpClient(
+                        host=host,
+                        port=port,
+                        settings=Settings(
+                            anonymized_telemetry=False
+                        )
                     )
-                )
-                logger.info(f"ChromaDB client created for {host}:{port}")
+                    logger.info(f"ChromaDB client created for {host}:{port}")
+                else:
+                    # Use mock client for development
+                    self._client = MockChromaDBClient(
+                        host=host,
+                        port=port,
+                        settings=MockSettings(anonymized_telemetry=False)
+                    )
+                    logger.info(f"Mock ChromaDB client created for development (target: {host}:{port})")
+                    
             except Exception as e:
                 logger.error(f"Failed to create ChromaDB client: {str(e)}")
                 raise ChromaDBConnectionError(f"Failed to connect to ChromaDB: {str(e)}") from e

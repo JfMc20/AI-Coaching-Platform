@@ -176,3 +176,165 @@ def mock_model_config():
             "top_p": 0.9
         }
     }
+
+
+@pytest.fixture
+def mock_rag_pipeline():
+    """Mock RAG pipeline for testing."""
+    mock = AsyncMock()
+    
+    # Mock process_query
+    mock.process_query.return_value = Mock(
+        response="This is a helpful AI response.",
+        sources=[],
+        confidence=0.85,
+        conversation_id="test_conv",
+        processing_time_ms=1500.0,
+        model_used="llama2:7b-chat"
+    )
+    
+    # Mock retrieve_knowledge
+    mock.retrieve_knowledge.return_value = [
+        Mock(
+            content="Relevant knowledge content",
+            metadata={"source": "test.txt"},
+            similarity_score=0.85,
+            rank=1,
+            document_id="doc_1",
+            chunk_index=0
+        )
+    ]
+    
+    return mock
+
+
+@pytest.fixture
+def mock_document_processor():
+    """Mock document processor for testing."""
+    mock = AsyncMock()
+    
+    # Mock process_document
+    mock.process_document.return_value = Mock(
+        document_id="test_doc_123",
+        status="completed",
+        total_chunks=3,
+        processing_time_seconds=2.5,
+        error_message=None,
+        metadata={
+            "filename": "test.txt",
+            "document_type": "txt",
+            "security_scan": {"is_safe": True}
+        }
+    )
+    
+    return mock
+
+
+@pytest.fixture
+def mock_embedding_manager():
+    """Mock embedding manager for testing."""
+    mock = AsyncMock()
+    
+    # Mock search_similar_documents
+    mock.search_similar_documents.return_value = [
+        {
+            "document_id": "doc_1",
+            "chunk_index": 0,
+            "content": "Relevant document content",
+            "similarity_score": 0.85,
+            "metadata": {"source": "test.txt"},
+            "rank": 1
+        }
+    ]
+    
+    # Mock generate_embeddings_batch
+    mock.generate_embeddings_batch.return_value = [
+        [0.1, 0.2, 0.3] * 128  # Mock 384-dim embedding
+    ]
+    
+    # Mock get_embedding_stats
+    mock.get_embedding_stats.return_value = {
+        "chromadb_stats": {
+            "total_embeddings": 1000,
+            "document_count": 50
+        },
+        "cache_stats": {
+            "total_cache_keys": 25,
+            "embedding_cache_keys": 15,
+            "search_cache_keys": 10
+        }
+    }
+    
+    return mock
+
+
+@pytest.fixture
+def test_file_content():
+    """Provide test file content for document processing."""
+    return {
+        "txt_content": b"This is a test text document with multiple sentences. It contains useful information for testing.",
+        "pdf_content": b"%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n/Pages 2 0 R\n>>\nendobj\n%EOF",
+        "docx_content": b"PK\x03\x04" + b"x" * 100,  # Minimal ZIP structure
+        "markdown_content": b"# Test Document\n\nThis is **bold** text.\n\n## Section\n\nMore content here."
+    }
+
+
+@pytest.fixture
+def test_conversation_data():
+    """Provide test conversation data."""
+    return {
+        "conversation_id": "conv_123",
+        "creator_id": "creator_456",
+        "messages": [
+            {
+                "id": "msg_1",
+                "role": "user",
+                "content": "Hello, I need help with productivity",
+                "created_at": "2023-12-01T10:00:00Z"
+            },
+            {
+                "id": "msg_2",
+                "role": "assistant",
+                "content": "I'd be happy to help you with productivity tips!",
+                "created_at": "2023-12-01T10:00:05Z",
+                "processing_time_ms": 1200
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def test_search_queries():
+    """Provide test search queries for various scenarios."""
+    return {
+        "simple": "How to improve productivity?",
+        "complex": "What are the best time management strategies for remote workers?",
+        "unicode": "Cómo mejorar la productividad? 你好",
+        "with_special_chars": "Goal-setting & time management (2023)",
+        "long_query": "I need comprehensive advice on improving my daily productivity habits, including time management techniques, goal setting strategies, and methods to maintain focus throughout the day while working from home.",
+        "empty": "",
+        "whitespace_heavy": "  How   to\n\timprove  \r\n productivity?  "
+    }
+
+
+@pytest.fixture
+def test_document_chunks():
+    """Provide test document chunks for processing."""
+    return [
+        {
+            "id": "chunk_1",
+            "content": "This is the first chunk of the document containing important information about productivity.",
+            "metadata": {"document_id": "doc_1", "chunk_index": 0, "source": "productivity.txt"},
+            "chunk_index": 0,
+            "token_count": 15,
+            "embedding_vector": [0.1, 0.2, 0.3] * 128
+        },
+        {
+            "id": "chunk_2", 
+            "content": "This is the second chunk discussing time management strategies and techniques.",
+            "metadata": {"document_id": "doc_1", "chunk_index": 1, "source": "productivity.txt"},
+            "chunk_index": 1,
+            "token_count": 12,
+            "embedding_vector": [0.4, 0.5, 0.6] * 128
+        }
+    ]

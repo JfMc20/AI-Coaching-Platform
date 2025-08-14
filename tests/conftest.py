@@ -1,83 +1,39 @@
 """
-Centralized pytest configuration for all tests.
-Provides common fixtures and imports service-specific fixtures.
-
-Fixture Organization:
-- Common fixtures (event_loop, clients, database) are defined here
-- Service-specific fixtures are in tests/fixtures/ modules
-- All fixtures are automatically available to tests through pytest_plugins
-
-Docker Dependencies:
-- PostgreSQL and Redis fixtures require Docker to be available
-- If Docker is not available, database-dependent tests will be skipped
-- Fallback to in-memory SQLite for basic database tests when PostgreSQL is unavailable
+Global pytest configuration and fixtures for the AI coaching platform.
 """
 
-import asyncio
 import os
 import sys
 import pytest
-import pytest_asyncio
+import asyncio
 from pathlib import Path
-from httpx import AsyncClient
-from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from testcontainers.postgres import PostgresContainer
-from testcontainers.redis import RedisContainer
 
+# Add project root to Python path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
-def enable_namespace_bridging():
-    """Enable namespace bridging for hyphenated service directories."""
-    import importlib.util
-    import types
-    from pathlib import Path
-    
-    # Get absolute repo root path
-    repo_root = Path(__file__).resolve().parent.parent
-    
-    # Create parent 'services' package if it doesn't exist
-    if 'services' not in sys.modules:
-        services_module = types.ModuleType('services')
-        services_module.__path__ = [str(repo_root / "services")]
-        sys.modules['services'] = services_module
-    
-    # Create namespace bridging for services with hyphens
-    service_mappings = {
-        'services.auth_service': repo_root / "services" / "auth-service",
-        'services.ai_engine_service': repo_root / "services" / "ai-engine-service", 
-        'services.channel_service': repo_root / "services" / "channel-service",
-        'services.creator_hub_service': repo_root / "services" / "creator-hub-service"
-    }
-    
-    for module_name, directory_path in service_mappings.items():
-        if not directory_path.exists():
-            print(f"[tests] Skipping namespace for {module_name}: {directory_path} not found")
-            continue
-            
-        if module_name not in sys.modules:
-            # Create a namespace module with proper __path__
-            namespace_module = types.ModuleType(module_name)
-            namespace_module.__path__ = [str(directory_path)]
-            sys.modules[module_name] = namespace_module
+# Set test environment variables before importing any modules
+os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("DEBUG", "true")
+os.environ.setdefault("LOG_LEVEL", "INFO")
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/1")
+os.environ.setdefault("CORS_ORIGINS", "http://localhost:3000,http://localhost:8080")
+os.environ.setdefault("ALLOWED_HOSTS", "localhost,127.0.0.1")
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only")
+os.environ.setdefault("JWT_ALGORITHM", "HS256")
+os.environ.setdefault("OLLAMA_URL", "http://localhost:11434")
+os.environ.setdefault("CHROMADB_URL", "http://localhost:8000")
+os.environ.setdefault("EMBEDDING_MODEL", "nomic-embed-text")
+os.environ.setdefault("CHAT_MODEL", "llama3.2")
+os.environ.setdefault("CHROMA_SHARD_COUNT", "5")
+os.environ.setdefault("VAULT_ENABLED", "false")
 
-
-# Enable namespace bridging automatically
-enable_namespace_bridging()
-
-# Import all service-specific fixture modules
-pytest_plugins = [
-    'tests.fixtures.auth_fixtures',
-    'tests.fixtures.ai_fixtures', 
-    'tests.fixtures.channel_fixtures',
-    'tests.fixtures.creator_hub_fixtures'
-]
-
-# Simplified configuration without shared module dependencies
-AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:8001")
-AI_ENGINE_SERVICE_URL = os.getenv("AI_ENGINE_SERVICE_URL", "http://localhost:8003")
-CREATOR_HUB_SERVICE_URL = os.getenv("CREATOR_HUB_SERVICE_URL", "http://localhost:8002")
-CHANNEL_SERVICE_URL = os.getenv("CHANNEL_SERVICE_URL", "http://localhost:8004")
+# Load test environment file if it exists
+test_env_file = project_root / ".env.test"
+if test_env_file.exists():
+    from dotenv import load_dotenv
+    load_dotenv(test_env_file)
 
 
 @pytest.fixture(scope="session")
@@ -88,138 +44,138 @@ def event_loop():
     loop.close()
 
 
-@pytest.fixture
-def test_client_factory():
-    """Factory for creating test clients for any FastAPI app."""
-    def _create_client(app):
-        return TestClient(app)
-    return _create_client
-
-
-@pytest.fixture
-async def async_client_factory():
-    """Factory for creating async HTTP clients for any FastAPI app."""
-    clients = []
+@pytest.fixture(autouse=True)
+def setup_test_environment():
+    """Automatically set up test environment for all tests."""
+    # Ensure we're in test mode
+    os.environ["ENVIRONMENT"] = "test"
     
-    def _create_client(app, base_url="http://test"):
-        client = AsyncClient(app=app, base_url=base_url)
-        clients.append(client)
-        return client
+    # Create test directories if they don't exist
+    test_uploads_dir = project_root / "test_uploads"
+    test_uploads_dir.mkdir(exist_ok=True)
     
-    yield _create_client
-    
-    # Cleanup all created clients
-    for client in clients:
-        await client.aclose()
-
-
-@pytest.fixture(scope="session")
-def postgres_container():
-    """Start PostgreSQL test container."""
-    try:
-        with PostgresContainer("postgres:15") as postgres:
-            yield postgres
-    except Exception as e:
-        pytest.skip(f"PostgreSQL container not available: {e}")
-
-
-@pytest.fixture(scope="session")
-def redis_container():
-    """Start Redis test container."""
-    try:
-        with RedisContainer("redis:7") as redis:
-            yield redis
-    except Exception as e:
-        pytest.skip(f"Redis container not available: {e}")
-
-
-@pytest_asyncio.fixture(scope="session")
-async def test_db_engine(postgres_container):
-    """Create async database engine for testing."""
-    try:
-        database_url = postgres_container.get_connection_url().replace("postgresql://", "postgresql+asyncpg://")
-        engine = create_async_engine(database_url, echo=False)
-        
-        # Skip table creation for now since we don't have Base model
-        # async with engine.begin() as conn:
-        #     await conn.run_sync(Base.metadata.create_all)
-        
-        yield engine
-        await engine.dispose()
-    except Exception as e:
-        # Fallback to in-memory SQLite for basic testing
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-        yield engine
-        await engine.dispose()
-
-
-@pytest_asyncio.fixture(scope="session")
-async def test_redis_client(redis_container):
-    """Create Redis client for testing."""
-    try:
-        import redis.asyncio as aioredis
-        redis_url = f"redis://localhost:{redis_container.get_exposed_port(6379)}"
-        client = aioredis.from_url(redis_url)
-        yield client
-        await client.close()
-    except Exception as e:
-        pytest.skip(f"Redis client not available: {e}")
-
-
-@pytest_asyncio.fixture
-async def common_db_session(test_db_engine):
-    """Create async database session for each test."""
-    async_session = sessionmaker(
-        test_db_engine, class_=AsyncSession, expire_on_commit=False
-    )
-    
-    async with async_session() as session:
-        yield session
-        await session.rollback()
-
-
-@pytest.fixture
-def common_test_user_data():
-    """Provide common test user data for cross-service tests."""
-    return {
-        "email": "integration@example.com",
-        "password": "IntegrationTest123!",
-        "full_name": "Integration Test User",
-        "tenant_id": "integration-tenant"
-    }
-
-
-@pytest.fixture
-def common_auth_headers():
-    """Provide common authentication headers for integration tests."""
-    return {
-        "Authorization": "Bearer integration-test-token",
-        "Content-Type": "application/json"
-    }
-
-
-@pytest_asyncio.fixture
-async def service_clients():
-    """Provide HTTP clients for all services."""
-    clients = {
-        "auth": AsyncClient(base_url=AUTH_SERVICE_URL),
-        "creator_hub": AsyncClient(base_url=CREATOR_HUB_SERVICE_URL),
-        "ai_engine": AsyncClient(base_url=AI_ENGINE_SERVICE_URL),
-        "channel": AsyncClient(base_url=CHANNEL_SERVICE_URL)
-    }
-    
-    yield clients
-    
-    for client in clients.values():
-        await client.aclose()
-
-
-@pytest_asyncio.fixture
-async def cleanup_test_data(test_redis_client):
-    """Clean up test data after each test."""
     yield
-    # Clean up Redis test data
-    try:
-        await test_redis_client.flushdb()
-    except Exception:
-        pass  # Ignore cleanup errors
+    
+    # Cleanup after tests
+    # Remove test files if needed
+    pass
+
+
+@pytest.fixture
+def mock_redis():
+    """Mock Redis client for testing."""
+    from unittest.mock import AsyncMock, Mock
+    
+    mock_redis = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=None)
+    mock_redis.set = AsyncMock(return_value=True)
+    mock_redis.delete = AsyncMock(return_value=True)
+    mock_redis.exists = AsyncMock(return_value=False)
+    mock_redis.expire = AsyncMock(return_value=True)
+    mock_redis.ping = AsyncMock(return_value=True)
+    
+    return mock_redis
+
+
+@pytest.fixture
+def mock_database():
+    """Mock database session for testing."""
+    from unittest.mock import AsyncMock, Mock
+    
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock()
+    mock_session.commit = AsyncMock()
+    mock_session.rollback = AsyncMock()
+    mock_session.close = AsyncMock()
+    
+    return mock_session
+
+
+@pytest.fixture
+def sample_text_content():
+    """Sample text content for testing document processing."""
+    return """
+    This is a sample document for testing purposes.
+    It contains multiple paragraphs and sentences.
+    
+    The document discusses various topics including:
+    - Natural language processing
+    - Machine learning algorithms
+    - Data preprocessing techniques
+    
+    This content will be used to test chunking, embedding generation,
+    and other document processing functionalities.
+    """
+
+
+@pytest.fixture
+def sample_pdf_content():
+    """Sample PDF content (as bytes) for testing file uploads."""
+    # This is a minimal PDF content for testing
+    return b"""%PDF-1.4
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Kids [3 0 R]
+/Count 1
+>>
+endobj
+3 0 obj
+<<
+/Type /Page
+/Parent 2 0 R
+/MediaBox [0 0 612 792]
+/Contents 4 0 R
+>>
+endobj
+4 0 obj
+<<
+/Length 44
+>>
+stream
+BT
+/F1 12 Tf
+72 720 Td
+(Test PDF content) Tj
+ET
+endstream
+endobj
+xref
+0 5
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000206 00000 n 
+trailer
+<<
+/Size 5
+/Root 1 0 R
+>>
+startxref
+299
+%%EOF"""
+
+
+@pytest.fixture
+def test_creator_id():
+    """Standard test creator ID."""
+    return "test_creator_123"
+
+
+@pytest.fixture
+def test_conversation_id():
+    """Standard test conversation ID."""
+    return "test_conversation_456"
+
+
+@pytest.fixture
+def test_document_id():
+    """Standard test document ID."""
+    return "test_document_789"
