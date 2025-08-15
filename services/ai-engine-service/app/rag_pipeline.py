@@ -16,6 +16,10 @@ from shared.ai.ollama_manager import get_ollama_manager, OllamaError
 from shared.models.conversations import Message, MessageRole, ConversationContext
 from shared.models.documents import DocumentChunk
 from shared.exceptions.base import BaseServiceException
+from shared.monitoring import (
+    trace_ml_operation, get_metrics_collector, create_correlation_id,
+    OperationType, MLMetrics
+)
 
 # Import the new embedding manager
 from .embedding_manager import get_embedding_manager, EmbeddingError
@@ -128,6 +132,7 @@ class ConversationManager:
             # Return empty context on error
             return []
     
+    @trace_ml_operation(operation_type=OperationType.CONVERSATION)
     async def add_exchange(
         self,
         conversation_id: str,
@@ -154,7 +159,19 @@ class ConversationManager:
             True if successful
         """
         try:
+            # Track conversation metrics
+            metrics_collector = get_metrics_collector()
+            start_time = datetime.utcnow()
             timestamp = datetime.utcnow()
+            
+            conv_metrics = MLMetrics(
+                operation_type=OperationType.CONVERSATION,
+                input_length=len(user_message),
+                output_length=len(ai_response),
+                model_name=model_used,
+                creator_id=creator_id
+            )
+            metrics_collector.record_ml_operation_start(conv_metrics)
             
             # Create user message
             user_msg = Message(
@@ -220,10 +237,22 @@ class ConversationManager:
             if len(self._memory_cache[conversation_id]) > self.max_context_messages:
                 self._memory_cache[conversation_id] = self._memory_cache[conversation_id][-self.max_context_messages:]
             
+            # Record successful conversation update
+            operation_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            metrics_collector.record_ml_operation_success(
+                conv_metrics, operation_time, len(sources or [])
+            )
+            
             logger.debug(f"Added exchange to conversation {conversation_id}")
             return True
             
         except Exception as e:
+            # Record conversation error
+            operation_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            metrics_collector.record_ml_operation_error(
+                conv_metrics, operation_time, str(e)
+            )
+            
             logger.error(f"Failed to add conversation exchange: {e}")
             return False
     
@@ -327,6 +356,7 @@ class RAGPipeline:
             f"similarity_threshold: {similarity_threshold}"
         )
     
+    @trace_ml_operation(operation_type=OperationType.CHAT)
     async def process_query(
         self, 
         query: str, 
@@ -352,8 +382,21 @@ class RAGPipeline:
         start_time = datetime.utcnow()
         context_window = context_window or self.max_context_tokens
         
+        # Get metrics collector for tracking
+        metrics_collector = get_metrics_collector()
+        correlation_id = create_correlation_id()
+        
         try:
-            logger.info(f"Processing query for creator {creator_id}, conversation {conversation_id}")
+            logger.info(f"Processing query for creator {creator_id}, conversation {conversation_id} [correlation_id: {correlation_id}]")
+            
+            # Track query start metrics
+            ml_metrics = MLMetrics(
+                operation_type=OperationType.CHAT,
+                input_length=len(query),
+                model_name="llama2:7b-chat",
+                creator_id=creator_id
+            )
+            metrics_collector.record_ml_operation_start(ml_metrics)
             
             # 1. Get conversation context
             conversation_context = await self.conversation_manager.get_context(
@@ -383,6 +426,13 @@ class RAGPipeline:
             # 6. Calculate processing time
             processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
             self._processing_times.append(processing_time)
+            
+            # Record successful completion metrics
+            ml_metrics.output_length = len(chat_response.response)
+            ml_metrics.token_count = chat_response.total_duration or 0  # Use duration as proxy
+            metrics_collector.record_ml_operation_success(
+                ml_metrics, processing_time, len(relevant_chunks)
+            )
             
             # 7. Create response object
             ai_response = AIResponse(
@@ -417,10 +467,17 @@ class RAGPipeline:
             return ai_response
             
         except Exception as e:
+            # Record error metrics
+            processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            metrics_collector.record_ml_operation_error(
+                ml_metrics, processing_time, str(e)
+            )
+            
             error_msg = f"RAG pipeline processing failed: {str(e)}"
             logger.error(error_msg)
             raise RAGError(error_msg) from e
     
+    @trace_ml_operation(operation_type=OperationType.SEARCH)
     async def retrieve_knowledge(
         self, 
         query: str, 
@@ -442,6 +499,18 @@ class RAGPipeline:
             RAGError: If retrieval fails
         """
         try:
+            # Track search metrics
+            metrics_collector = get_metrics_collector()
+            start_time = datetime.utcnow()
+            
+            search_metrics = MLMetrics(
+                operation_type=OperationType.SEARCH,
+                input_length=len(query),
+                model_name="nomic-embed-text",
+                creator_id=creator_id
+            )
+            metrics_collector.record_ml_operation_start(search_metrics)
+            
             # Use the optimized embedding manager for search
             search_results = await self.embedding_manager.search_similar_documents(
                 query=query,
@@ -464,14 +533,33 @@ class RAGPipeline:
                 )
                 chunks.append(chunk)
             
+            # Record successful search metrics
+            processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            search_metrics.output_length = len(chunks)
+            metrics_collector.record_ml_operation_success(
+                search_metrics, processing_time, len(chunks)
+            )
+            
             logger.debug(f"Retrieved {len(chunks)} relevant chunks for query using optimized search")
             return chunks
             
         except EmbeddingError as e:
+            # Record search error metrics
+            processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            metrics_collector.record_ml_operation_error(
+                search_metrics, processing_time, str(e)
+            )
+            
             error_msg = f"Optimized knowledge retrieval failed: {str(e)}"
             logger.error(error_msg)
             raise RAGError(error_msg) from e
         except Exception as e:
+            # Record unexpected error metrics
+            processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            metrics_collector.record_ml_operation_error(
+                search_metrics, processing_time, str(e)
+            )
+            
             error_msg = f"Unexpected error in knowledge retrieval: {str(e)}"
             logger.error(error_msg)
             raise RAGError(error_msg) from e

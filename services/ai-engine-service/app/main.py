@@ -19,6 +19,13 @@ from shared.config.settings import validate_service_environment
 from shared.config.env_constants import CORS_ORIGINS, REQUIRED_VARS_BY_SERVICE, get_env_value
 from shared.ai.chromadb_manager import get_chromadb_manager, close_chromadb_manager
 from shared.ai.ollama_manager import get_ollama_manager, close_ollama_manager
+from shared.monitoring import (
+    get_tracer, trace_ml_operation, create_correlation_id,
+    get_metrics_collector, MLMetrics, OperationType,
+    PrivacyPreservingMonitor, PrivacyConfig,
+    get_health_checker, get_alert_manager,
+    SyntheticRequestRunner
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +41,90 @@ validate_service_environment(required_env_vars, logger)
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
     logger.info("🚀 AI Engine Service starting up...")
+    
+    # Initialize monitoring systems
+    logger.info("Initializing monitoring systems...")
+    
+    # Setup privacy-preserving monitoring
+    privacy_config = PrivacyConfig(
+        sampling_rate=float(get_env_value("MONITORING_SAMPLING_RATE", "0.01")),
+        retention_days=int(get_env_value("MONITORING_RETENTION_DAYS", "30")),
+        enable_pii_detection=get_env_value("ENABLE_PII_DETECTION", "true").lower() == "true"
+    )
+    privacy_monitor = PrivacyPreservingMonitor(privacy_config)
+    app.state.privacy_monitor = privacy_monitor
+    
+    # Initialize metrics collector
+    metrics_collector = get_metrics_collector()
+    app.state.metrics_collector = metrics_collector
+    
+    # Initialize health checker
+    health_checker = get_health_checker()
+    app.state.health_checker = health_checker
+    
+    # Initialize alert manager
+    alert_manager = get_alert_manager()
+    app.state.alert_manager = alert_manager
+    
+    # Initialize and start synthetic monitoring
+    synthetic_runner = SyntheticRequestRunner(health_checker)
+    app.state.synthetic_runner = synthetic_runner
+    
+    # Start automated health monitoring (every 5 minutes)
+    monitoring_interval = int(get_env_value("HEALTH_CHECK_INTERVAL_MINUTES", "5"))
+    await synthetic_runner.start_monitoring(monitoring_interval)
+    logger.info(f"Started automated health monitoring with {monitoring_interval}min interval")
+    
+    # Start alert rule evaluation task
+    async def alert_evaluation_task():
+        """Background task to evaluate alert rules"""
+        while True:
+            try:
+                new_alerts = await alert_manager.evaluate_alert_rules()
+                if new_alerts:
+                    logger.info(f"Generated {len(new_alerts)} new alerts")
+                await asyncio.sleep(60)  # Check every minute
+            except Exception as e:
+                logger.error(f"Alert evaluation failed: {e}")
+                await asyncio.sleep(60)
+    
+    # Start alert evaluation in background
+    alert_task = asyncio.create_task(alert_evaluation_task())
+    app.state.alert_task = alert_task
+    logger.info("Started automated alert evaluation")
+    
+    # Start privacy compliance monitoring task
+    async def privacy_compliance_task():
+        """Background task for privacy compliance monitoring"""
+        while True:
+            try:
+                # Run privacy compliance audit
+                compliance_report = privacy_monitor.get_privacy_compliance_report()
+                
+                # Check for compliance violations
+                if not compliance_report.get('gdpr_compliant', True):
+                    logger.warning("GDPR compliance violation detected")
+                    # Could trigger alert here
+                
+                # Log compliance metrics
+                logger.info(f"Privacy compliance check: {compliance_report}")
+                
+                # Cleanup expired samples
+                # Cleanup expired samples (placeholder for future implementation)
+                # In production, this would clean up expired privacy samples from storage
+                logger.debug("Privacy sample cleanup would run here")
+                
+                # Sleep for 1 hour between compliance checks
+                await asyncio.sleep(3600)
+                
+            except Exception as e:
+                logger.error(f"Privacy compliance check failed: {e}")
+                await asyncio.sleep(3600)
+    
+    # Start privacy compliance monitoring in background
+    privacy_task = asyncio.create_task(privacy_compliance_task())
+    app.state.privacy_task = privacy_task
+    logger.info("Started automated privacy compliance monitoring")
     
     # Startup logic
     startup_tasks = []
@@ -77,6 +168,29 @@ async def lifespan(app: FastAPI):
     
     # Cleanup logic
     try:
+        # Stop synthetic monitoring
+        if hasattr(app.state, 'synthetic_runner'):
+            await app.state.synthetic_runner.stop_monitoring()
+            logger.info("Stopped synthetic monitoring")
+        
+        # Stop alert evaluation task
+        if hasattr(app.state, 'alert_task'):
+            app.state.alert_task.cancel()
+            try:
+                await app.state.alert_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Stopped alert evaluation")
+        
+        # Stop privacy compliance task
+        if hasattr(app.state, 'privacy_task'):
+            app.state.privacy_task.cancel()
+            try:
+                await app.state.privacy_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Stopped privacy compliance monitoring")
+        
         await close_chromadb_manager()
         await close_ollama_manager()
         logger.info("✅ AI Engine Service cleanup completed")
@@ -118,6 +232,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include monitoring endpoints
+app.include_router(monitoring_router)
 
 
 @app.get("/health", tags=["health"])
@@ -216,9 +333,22 @@ class ContextResponse(BaseModel):
           tags=["conversations"],
           summary="Process conversation with AI",
           description="Process a user query through the RAG pipeline and return AI response with sources")
+@trace_ml_operation(operation_type=OperationType.CHAT)
 async def process_conversation(request: ConversationRequest):
     """Process a conversation with AI using RAG pipeline"""
     try:
+        # Initialize monitoring
+        privacy_monitor = app.state.privacy_monitor
+        correlation_id = create_correlation_id()
+        
+        # Log privacy-preserving query monitoring
+        await privacy_monitor.log_query(
+            query=request.query,
+            creator_id=request.creator_id,
+            correlation_id=correlation_id,
+            consent_given=True  # Assume consent for API usage
+        )
+        
         # Get RAG pipeline instance
         rag_pipeline = get_rag_pipeline()
         
@@ -242,6 +372,16 @@ async def process_conversation(request: ConversationRequest):
             }
             for source in ai_response.sources
         ]
+        
+        # Log privacy-preserving response monitoring
+        await privacy_monitor.log_response(
+            response=ai_response.response,
+            creator_id=request.creator_id,
+            correlation_id=correlation_id,
+            model_used=ai_response.model_used,
+            processing_time_ms=ai_response.processing_time_ms,
+            sources_count=len(ai_response.sources)
+        )
         
         return ConversationResponse(
             response=ai_response.response,
@@ -335,6 +475,12 @@ async def get_conversation_context(
 from .document_processor import get_document_processor, DocumentProcessingError, ProcessingConfig
 from fastapi import UploadFile, File, Form
 
+# Import model manager
+from .model_manager import get_model_manager, ModelVersioningError, DeploymentStrategy
+
+# Import monitoring endpoints
+from .monitoring_endpoints import router as monitoring_router
+
 # Document processing request/response models
 class DocumentProcessResponse(BaseModel):
     """Response model for document processing"""
@@ -352,6 +498,7 @@ class DocumentProcessResponse(BaseModel):
           tags=["documents"],
           summary="Process document for embedding and storage",
           description="Upload and process a document through security scanning, text extraction, chunking, and embedding generation")
+@trace_ml_operation(operation_type=OperationType.DOCUMENT_PROCESSING)
 async def process_document(
     file: UploadFile = File(..., description="Document file to process"),
     creator_id: str = Form(..., description="Creator identifier for tenant isolation"),
@@ -359,6 +506,10 @@ async def process_document(
 ):
     """Process a document for embedding and storage"""
     try:
+        # Initialize monitoring
+        privacy_monitor = app.state.privacy_monitor
+        correlation_id = create_correlation_id()
+        
         # Validate file
         if not file.filename:
             raise HTTPException(
@@ -368,6 +519,14 @@ async def process_document(
         
         # Read file content
         file_content = await file.read()
+        
+        # Log privacy-preserving document processing start
+        await privacy_monitor.log_document_processing(
+            filename=file.filename,
+            file_size=len(file_content),
+            creator_id=creator_id,
+            correlation_id=correlation_id
+        )
         
         if not file_content:
             raise HTTPException(
@@ -439,10 +598,22 @@ class DocumentSearchResponse(BaseModel):
           tags=["documents"],
           summary="Search documents using semantic similarity",
           description="Search through processed documents using semantic similarity matching")
+@trace_ml_operation(operation_type=OperationType.SEARCH)
 async def search_documents(request: DocumentSearchRequest):
     """Search documents using semantic similarity"""
     try:
+        # Initialize monitoring
+        privacy_monitor = app.state.privacy_monitor
+        correlation_id = create_correlation_id()
         start_time = datetime.utcnow()
+        
+        # Log privacy-preserving search
+        await privacy_monitor.log_query(
+            query=request.query,
+            creator_id=request.creator_id,
+            correlation_id=correlation_id,
+            consent_given=True
+        )
         
         # Get RAG pipeline for search functionality
         rag_pipeline = get_rag_pipeline()
@@ -473,6 +644,15 @@ async def search_documents(request: DocumentSearchRequest):
         ]
         
         processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+        
+        # Log search results
+        await privacy_monitor.log_search_results(
+            query=request.query,
+            result_count=len(results),
+            creator_id=request.creator_id,
+            correlation_id=correlation_id,
+            processing_time_ms=processing_time
+        )
         
         return DocumentSearchResponse(
             query=request.query,
@@ -785,6 +965,324 @@ async def get_pipeline_performance():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get pipeline performance: {str(e)}"
+        )
+
+
+# Model Management and Versioning Endpoints
+class ModelDeploymentRequest(BaseModel):
+    """Request model for model deployment"""
+    model_name: str = Field(..., description="Name of the model to deploy")
+    version: str = Field(..., description="Version to deploy (semantic versioning)")
+    strategy: str = Field("canary", description="Deployment strategy: canary, blue_green, rolling, immediate")
+    rollback_thresholds: Optional[Dict[str, float]] = Field(None, description="Custom rollback thresholds")
+
+class ModelDeploymentResponse(BaseModel):
+    """Response model for model deployment"""
+    success: bool = Field(..., description="Deployment success status")
+    model_name: str = Field(..., description="Model name")
+    version: str = Field(..., description="Deployed version")
+    strategy: str = Field(..., description="Deployment strategy used")
+    message: str = Field(..., description="Deployment result message")
+    deployment_time: str = Field(..., description="Deployment timestamp")
+
+@app.post("/api/v1/ai/models/deploy", 
+          response_model=ModelDeploymentResponse,
+          tags=["models"],
+          summary="Deploy model version",
+          description="Deploy a new model version using specified deployment strategy with automatic rollback")
+async def deploy_model_version(request: ModelDeploymentRequest):
+    """Deploy a new model version with rollback capabilities"""
+    try:
+        model_manager = get_model_manager()
+        
+        # Validate deployment strategy
+        try:
+            strategy = DeploymentStrategy(request.strategy.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid deployment strategy: {request.strategy}. Must be one of: canary, blue_green, rolling, immediate"
+            )
+        
+        # Deploy model version
+        success = await model_manager.deploy_model_version(
+            model_name=request.model_name,
+            version=request.version,
+            strategy=strategy,
+            rollback_thresholds=request.rollback_thresholds
+        )
+        
+        message = f"Successfully deployed {request.model_name}:{request.version}" if success else f"Failed to deploy {request.model_name}:{request.version}"
+        
+        return ModelDeploymentResponse(
+            success=success,
+            model_name=request.model_name,
+            version=request.version,
+            strategy=request.strategy,
+            message=message,
+            deployment_time=datetime.utcnow().isoformat()
+        )
+        
+    except ModelVersioningError as e:
+        logger.error(f"Model deployment error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Model deployment failed: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Model deployment error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Model deployment failed: {str(e)}"
+        )
+
+
+@app.get("/api/v1/ai/models/{model_name}/versions", tags=["models"])
+async def get_model_versions(model_name: str):
+    """Get all versions of a specific model"""
+    try:
+        model_manager = get_model_manager()
+        versions = await model_manager.get_model_versions(model_name)
+        
+        return {
+            "model_name": model_name,
+            "versions": versions,
+            "total_versions": len(versions),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get model versions: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get model versions: {str(e)}"
+        )
+
+
+@app.post("/api/v1/ai/models/{model_name}/rollback", tags=["models"])
+async def rollback_model(model_name: str, target_version: Optional[str] = None):
+    """Rollback model to previous or specified version"""
+    try:
+        model_manager = get_model_manager()
+        
+        # If no target version specified, rollback to previous
+        if not target_version:
+            # Get current active version to determine previous
+            current_version = await model_manager._get_active_version(model_name)
+            if not current_version:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No active version found for model {model_name}"
+                )
+            
+            # For demo purposes, assume previous version
+            # In production, this would query version history
+            target_version = "1.0.0"  # Placeholder
+        
+        success = await model_manager._rollback_to_previous_version(model_name, target_version)
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"Successfully rolled back {model_name} to version {target_version}",
+                "model_name": model_name,
+                "target_version": target_version,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to rollback {model_name} to version {target_version}"
+            )
+        
+    except Exception as e:
+        logger.error(f"Model rollback failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Model rollback failed: {str(e)}"
+        )
+
+
+@app.get("/api/v1/ai/models/{model_name}/active", tags=["models"])
+async def get_active_model_version(model_name: str):
+    """Get currently active version of a model"""
+    try:
+        model_manager = get_model_manager()
+        active_version = await model_manager._get_active_version(model_name)
+        
+        if not active_version:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No active version found for model {model_name}"
+            )
+        
+        return {
+            "model_name": model_name,
+            "active_version": active_version,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get active model version: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get active model version: {str(e)}"
+        )
+
+
+# Advanced Performance Optimization Endpoints
+@app.post("/api/v1/ai/cache/{creator_id}/warm", tags=["models"])
+async def warm_cache(creator_id: str):
+    """Warm cache for creator's frequently used queries"""
+    try:
+        embedding_manager = get_embedding_manager()
+        warmed_queries = await embedding_manager.warm_cache(creator_id)
+        
+        return {
+            "status": "success",
+            "message": f"Cache warmed for {len(warmed_queries)} queries",
+            "creator_id": creator_id,
+            "warmed_queries": len(warmed_queries),
+            "queries": warmed_queries,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to warm cache: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to warm cache: {str(e)}"
+        )
+
+
+@app.delete("/api/v1/ai/cache/{creator_id}/document/{document_id}", tags=["models"])
+async def invalidate_document_cache(creator_id: str, document_id: str):
+    """Invalidate cache for specific document"""
+    try:
+        embedding_manager = get_embedding_manager()
+        await embedding_manager.invalidate_document_cache(creator_id, document_id)
+        
+        return {
+            "status": "success",
+            "message": f"Cache invalidated for document {document_id}",
+            "creator_id": creator_id,
+            "document_id": document_id,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to invalidate cache: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to invalidate cache: {str(e)}"
+        )
+
+
+@app.post("/api/v1/ai/embeddings/{creator_id}/compression", tags=["models"])
+async def enable_embedding_compression(
+    creator_id: str, 
+    compression_type: str = "float16"
+):
+    """Enable embedding compression for storage efficiency"""
+    try:
+        embedding_manager = get_embedding_manager()
+        success = await embedding_manager.enable_embedding_compression(
+            creator_id, compression_type
+        )
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"Enabled {compression_type} compression for creator {creator_id}",
+                "creator_id": creator_id,
+                "compression_type": compression_type,
+                "expected_reduction": "50%" if compression_type == "float16" else "75%",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to enable compression"
+            )
+        
+    except Exception as e:
+        logger.error(f"Failed to enable compression: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to enable compression: {str(e)}"
+        )
+
+
+@app.post("/api/v1/ai/chromadb/optimize-pool", tags=["models"])
+async def optimize_connection_pool():
+    """Optimize ChromaDB connection pool settings"""
+    try:
+        embedding_manager = get_embedding_manager()
+        optimization_results = await embedding_manager.optimize_connection_pool()
+        
+        return {
+            "status": "success",
+            "message": "ChromaDB connection pool optimized",
+            "optimization_results": optimization_results,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to optimize connection pool: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to optimize connection pool: {str(e)}"
+        )
+
+
+@app.post("/api/v1/ai/hnsw/tune", tags=["models"])
+async def tune_hnsw_parameters(dataset_size: int):
+    """Auto-tune HNSW parameters based on dataset size"""
+    try:
+        if dataset_size <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Dataset size must be positive"
+            )
+        
+        embedding_manager = get_embedding_manager()
+        hnsw_params = await embedding_manager.tune_hnsw_parameters(dataset_size)
+        
+        return {
+            "status": "success",
+            "message": f"HNSW parameters tuned for dataset size {dataset_size}",
+            "dataset_size": dataset_size,
+            "hnsw_parameters": hnsw_params,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to tune HNSW parameters: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to tune HNSW parameters: {str(e)}"
+        )
+
+
+@app.get("/api/v1/ai/performance/{creator_id}", tags=["models"])
+async def get_performance_metrics(creator_id: str):
+    """Get comprehensive performance metrics for creator"""
+    try:
+        embedding_manager = get_embedding_manager()
+        metrics = await embedding_manager.get_performance_metrics(creator_id)
+        
+        return {
+            "status": "success",
+            "creator_id": creator_id,
+            "performance_metrics": metrics,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get performance metrics: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get performance metrics: {str(e)}"
         )
 
 

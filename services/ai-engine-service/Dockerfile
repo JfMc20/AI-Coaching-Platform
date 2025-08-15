@@ -17,18 +17,9 @@ RUN apt-get update && apt-get install -y \
 # Upgrade pip and install build tools
 RUN pip install --upgrade pip setuptools wheel
 
-# Create requirements.txt with exact versions
+# Copy requirements.txt and install dependencies
 WORKDIR /build
-RUN echo "fastapi==0.104.0" > requirements.txt && \
-    echo "uvicorn[standard]==0.24.0" >> requirements.txt && \
-    echo "sqlalchemy==2.0.23" >> requirements.txt && \
-    echo "asyncpg==0.29.0" >> requirements.txt && \
-    echo "redis==5.0.1" >> requirements.txt && \
-    echo "chromadb==0.4.15" >> requirements.txt && \
-    echo "ollama==0.1.7" >> requirements.txt && \
-    echo "numpy==1.25.2" >> requirements.txt && \
-    echo "pydantic==2.5.0" >> requirements.txt && \
-    echo "aiohttp==3.9.1" >> requirements.txt
+COPY services/ai-engine-service/requirements.txt .
 
 # Pre-download and build wheels
 RUN pip wheel --wheel-dir /build/wheels -r requirements.txt
