@@ -4,6 +4,7 @@ Abstract base class for all channel integrations
 """
 
 import logging
+import uuid
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -20,6 +21,7 @@ from ..models import (
     ProcessingStatus,
     DeliveryStatus
 )
+from ..ai_client import get_ai_client, ConversationResponse
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +175,71 @@ class BaseChannelService(ABC):
             self.logger.error(f"Failed to update message status: {e}")
             await self.db_session.rollback()
             return False
+    
+    async def process_message_with_ai(
+        self, 
+        inbound_message: InboundMessage,
+        conversation_id: Optional[str] = None
+    ) -> Optional[OutboundMessage]:
+        """
+        Process an inbound message with AI Engine and generate response
+        
+        Args:
+            inbound_message: The inbound message to process
+            conversation_id: Optional conversation ID, will generate if not provided
+            
+        Returns:
+            OutboundMessage with AI response, or None if processing failed
+        """
+        try:
+            # Generate conversation ID if not provided
+            if not conversation_id:
+                conversation_id = str(uuid.uuid4())
+            
+            # Get AI client
+            ai_client = get_ai_client()
+            
+            # Process message with AI Engine
+            ai_response: ConversationResponse = await ai_client.process_message(
+                message=inbound_message.content,
+                creator_id=self.channel_config.creator_id,
+                conversation_id=conversation_id,
+                user_identifier=inbound_message.user_identifier
+            )
+            
+            # Create outbound message with AI response
+            outbound_message = OutboundMessage(
+                content=ai_response.response,
+                message_type=inbound_message.message_type,
+                user_identifier=inbound_message.user_identifier,
+                conversation_id=ai_response.conversation_id,
+                channel_metadata={
+                    "ai_processed": True,
+                    "ai_metadata": ai_response.metadata,
+                    "original_message_id": inbound_message.external_message_id
+                }
+            )
+            
+            self.logger.info(f"Generated AI response for conversation {conversation_id}")
+            return outbound_message
+            
+        except Exception as e:
+            self.logger.error(f"Failed to process message with AI: {e}")
+            
+            # Return fallback response
+            fallback_message = OutboundMessage(
+                content="I apologize, but I'm having trouble processing your message right now. Please try again later.",
+                message_type=inbound_message.message_type,
+                user_identifier=inbound_message.user_identifier,
+                conversation_id=conversation_id or str(uuid.uuid4()),
+                channel_metadata={
+                    "ai_processed": False,
+                    "fallback_response": True,
+                    "error": str(e)
+                }
+            )
+            
+            return fallback_message
     
     async def increment_message_count(self) -> bool:
         """Increment daily and monthly message counts"""

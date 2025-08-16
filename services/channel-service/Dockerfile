@@ -17,17 +17,9 @@ RUN apt-get update && apt-get install -y \
 # Upgrade pip and install build tools
 RUN pip install --upgrade pip setuptools wheel
 
-# Create requirements.txt with exact versions
+# Use centralized requirements.txt (generated from pyproject.toml)
 WORKDIR /build
-RUN echo "fastapi==0.104.0" > requirements.txt && \
-    echo "uvicorn[standard]==0.24.0" >> requirements.txt && \
-    echo "websockets==12.0" >> requirements.txt && \
-    echo "sqlalchemy==2.0.23" >> requirements.txt && \
-    echo "asyncpg==0.29.0" >> requirements.txt && \
-    echo "redis==5.0.1" >> requirements.txt && \
-    echo "pydantic[email]==2.5.0" >> requirements.txt && \
-    echo "httpx==0.25.0" >> requirements.txt && \
-    echo "python-dotenv==1.0.0" >> requirements.txt
+COPY services/channel-service/requirements.txt .
 
 # Pre-download and build wheels
 RUN pip wheel --wheel-dir /build/wheels -r requirements.txt
@@ -84,4 +76,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD ["python3", "/usr/local/bin/healthcheck.py"]
 
 # Run the application with TCP dependency waiting and single worker for WebSocket handling
-CMD ["sh", "-c", "python3 /app/wait-for-services.py postgres:tcp://postgres:5432 redis:tcp://redis:6379 auth-service:http://auth-service:8001/health ai-engine-service:http://ai-engine-service:8003/health --timeout 180 --verbose && uvicorn app.main:app --host 0.0.0.0 --port 8004 --workers 1"]
+CMD ["sh", "-c", "python3 /app/wait-for-services.py postgres:tcp://postgres:5432 redis:tcp://redis:6379 auth-service:tcp://auth-service:8001 ai-engine-service:tcp://ai-engine-service:8003 --timeout 180 --verbose && uvicorn app.main:app --host 0.0.0.0 --port 8004 --workers 1"]

@@ -215,6 +215,25 @@ class WhatsAppService(BaseChannelService):
             
             await self.save_message(message_data, MessageDirection.INBOUND)
             
+            # Process message with AI and generate response
+            try:
+                ai_response = await self.process_message_with_ai(inbound_message, conversation_id)
+                
+                if ai_response:
+                    # Send AI response back to user
+                    send_result = await self.send_message(ai_response)
+                    
+                    if send_result.get("success"):
+                        self.logger.info(f"Sent AI response for conversation {conversation_id}")
+                    else:
+                        self.logger.error(f"Failed to send AI response: {send_result.get('error')}")
+                else:
+                    self.logger.warning(f"No AI response generated for conversation {conversation_id}")
+                    
+            except Exception as e:
+                self.logger.error(f"Failed to process message with AI: {e}")
+                # Continue processing even if AI fails
+            
             return inbound_message
             
         except Exception as e:

@@ -269,6 +269,16 @@ class WidgetSettings(BaseModel):
     border_radius: int = Field(default=8, ge=0, le=50, description="Border radius in pixels")
     font_family: str = Field(default="Inter", description="Font family")
     font_size: int = Field(default=14, ge=10, le=24, description="Font size in pixels")
+    
+    @validator('primary_color', 'secondary_color', 'text_color', 'background_color')
+    def validate_hex_color(cls, v):
+        if not v.startswith('#') or len(v) != 7:
+            raise ValueError('Color must be a valid hex color (e.g., #007bff)')
+        try:
+            int(v[1:], 16)
+        except ValueError:
+            raise ValueError('Invalid hex color format')
+        return v
 
 
 class WidgetConfiguration(TenantAwareEntity):
@@ -298,16 +308,6 @@ class WidgetConfiguration(TenantAwareEntity):
         if not v or not v.strip():
             raise ValueError('Widget name cannot be empty')
         return v.strip()
-    
-    @validator('primary_color', 'secondary_color', 'text_color', 'background_color')
-    def validate_hex_color(cls, v):
-        if not v.startswith('#') or len(v) != 7:
-            raise ValueError('Color must be a valid hex color (e.g., #007bff)')
-        try:
-            int(v[1:], 16)
-        except ValueError:
-            raise ValueError('Invalid hex color format')
-        return v
 
 
 class WidgetEmbedCode(BaseModel):

@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel, Field, validator
-from shared.models.auth import TenantAwareEntity
+from shared.models.base import TenantAwareEntity
 
 
 class ChannelType(str, Enum):

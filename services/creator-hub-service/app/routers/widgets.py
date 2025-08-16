@@ -11,9 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models.database import get_tenant_session
-from shared.security.auth import get_current_creator_id
 from shared.exceptions.base import NotFoundError, DatabaseError
+
+# Import dependencies from our app layer
+from ..database import get_db
+from ..dependencies.auth import get_current_creator_id
 
 from ..models import (
     WidgetConfiguration, WidgetSettings, WidgetEmbedCode,
@@ -31,7 +33,7 @@ router = APIRouter(prefix="/api/v1/creators/widget", tags=["widgets"])
 @router.get("/config", response_model=WidgetConfiguration)
 async def get_widget_config(
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Get widget configuration"""
     try:
@@ -70,7 +72,7 @@ async def get_widget_config(
 async def update_widget_config(
     config_update: Dict[str, Any],
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Update widget configuration"""
     try:
@@ -97,7 +99,7 @@ async def update_widget_config(
 async def update_widget_appearance(
     settings: WidgetSettings,
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Update widget appearance settings"""
     try:
@@ -137,7 +139,7 @@ async def update_widget_behavior(
     enable_voice_input: Optional[bool] = None,
     rate_limit_messages: Optional[int] = None,
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Update widget behavior settings"""
     try:
@@ -191,7 +193,7 @@ async def update_widget_behavior(
 @router.get("/embed-code", response_model=WidgetEmbedCode)
 async def get_embed_code(
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Get widget embed code"""
     try:
@@ -298,7 +300,7 @@ If you need help with installation, contact support or check our documentation.
 @router.post("/preview")
 async def generate_preview_token(
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Generate a preview token for testing widget"""
     try:
@@ -332,7 +334,7 @@ async def generate_preview_token(
 async def get_widget_analytics(
     days: int = 30,
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Get widget usage analytics"""
     try:

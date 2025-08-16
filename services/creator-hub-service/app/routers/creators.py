@@ -8,10 +8,12 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models.database import get_tenant_session
-from shared.security.auth import get_current_creator_id
 from shared.exceptions.auth import AuthenticationError
 from shared.exceptions.base import NotFoundError, DatabaseError
+
+# Import dependencies from our app layer
+from ..database import get_db
+from ..dependencies.auth import get_current_creator_id
 
 from ..models import (
     CreatorProfile, CreatorProfileUpdate, DashboardMetrics,
@@ -29,7 +31,7 @@ router = APIRouter(prefix="/api/v1/creators", tags=["creators"])
 @router.get("/profile", response_model=CreatorProfile)
 async def get_creator_profile(
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Get creator profile information"""
     try:
@@ -57,7 +59,7 @@ async def get_creator_profile(
 async def update_creator_profile(
     profile_data: CreatorProfileUpdate,
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Update creator profile information"""
     try:
@@ -90,12 +92,12 @@ async def update_creator_profile(
 async def get_dashboard_metrics(
     period_days: int = Query(default=30, ge=1, le=365, description="Period in days"),
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Get creator dashboard metrics"""
     try:
         metrics = await AnalyticsService.get_dashboard_metrics(
-            creator_id, period_days, session
+            creator_id, session, period_days
         )
         
         logger.info(f"Dashboard metrics retrieved for creator: {creator_id}")
@@ -113,7 +115,7 @@ async def get_dashboard_metrics(
 async def get_analytics_data(
     analytics_request: AnalyticsRequest,
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Get detailed analytics data with custom parameters"""
     try:
@@ -133,7 +135,7 @@ async def get_analytics_data(
             period_days = (analytics_request.end_date - analytics_request.start_date).days
         
         metrics = await AnalyticsService.get_dashboard_metrics(
-            creator_id, period_days, session
+            creator_id, session, period_days
         )
         
         logger.info(f"Custom analytics retrieved for creator: {creator_id}")
@@ -155,7 +157,7 @@ async def list_conversations(
     page_size: int = Query(default=20, ge=1, le=100, description="Items per page"),
     status_filter: Optional[str] = Query(default=None, description="Filter by status"),
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """List creator's conversations"""
     try:
@@ -211,7 +213,7 @@ async def list_conversations(
 async def get_conversation(
     conversation_id: str,
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Get conversation details"""
     try:

@@ -14,9 +14,11 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models.database import get_tenant_session
-from shared.security.auth import get_current_creator_id
 from shared.exceptions.base import NotFoundError, DatabaseError
+
+# Import dependencies from our app layer
+from ..database import get_db
+from ..dependencies.auth import get_current_creator_id
 
 from ..models import (
     KnowledgeDocument, DocumentMetadata, DocumentType, DocumentStatus,
@@ -43,7 +45,7 @@ async def upload_document(
     description: Optional[str] = Form(None, description="Document description"),
     tags: Optional[str] = Form(None, description="Comma-separated tags"),
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Upload and process a document"""
     try:
@@ -180,16 +182,16 @@ async def list_documents(
     page_size: int = Query(default=20, ge=1, le=100, description="Items per page"),
     status_filter: Optional[DocumentStatus] = Query(default=None, description="Filter by status"),
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """List creator's documents"""
     try:
         result = await KnowledgeBaseService.list_documents(
             creator_id=creator_id,
+            session=session,
             page=page,
             page_size=page_size,
-            status_filter=status_filter,
-            session=session
+            status_filter=status_filter
         )
         
         logger.info(f"Documents listed for creator: {creator_id} (page {page})")
@@ -208,7 +210,7 @@ async def list_documents(
 async def get_document(
     doc_id: str,
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Get document details"""
     try:
@@ -241,7 +243,7 @@ async def get_document(
 async def delete_document(
     doc_id: str,
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Delete a document"""
     try:
@@ -300,7 +302,7 @@ async def delete_document(
 async def reprocess_document(
     doc_id: str,
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Reprocess a document (regenerate embeddings)"""
     try:
@@ -358,7 +360,7 @@ async def reprocess_document(
 async def get_document_status(
     doc_id: str,
     creator_id: str = Depends(get_current_creator_id),
-    session: AsyncSession = Depends(get_tenant_session)
+    session: AsyncSession = Depends(get_db)
 ):
     """Get document processing status"""
     try:

@@ -36,3 +36,7 @@ class ConfigurationError(BaseServiceException):
 
 class ExternalServiceError(BaseServiceException):
     """Raised when an external service fails"""
+
+
+class DatabaseError(BaseServiceException):
+    """Raised when database operations fail"""

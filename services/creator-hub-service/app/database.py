@@ -13,8 +13,43 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 
-from shared.models.database import get_db_session, get_tenant_session
-from shared.models.auth import User  # Creator is a User with specific role
+from shared.models.database import Creator
+
+# Database manager and session handling
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy import text
+from shared.config.env_constants import get_env_value, DATABASE_URL
+from typing import AsyncGenerator
+
+# Database setup (similar to auth service pattern)
+database_url = get_env_value(DATABASE_URL, fallback=True)
+engine = create_async_engine(database_url, echo=False)
+async_session = async_sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False
+)
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency for database sessions"""
+    async with async_session() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+async def set_tenant_context(creator_id: str, db: AsyncSession):
+    """Set tenant context for Row Level Security policies"""
+    try:
+        await db.execute(
+            text("SELECT set_config('app.current_creator_id', :creator_id, true)"),
+            {"creator_id": creator_id}
+        )
+    except Exception as e:
+        logger.error(f"Failed to set tenant context: {e}")
+        raise
 from shared.exceptions.base import DatabaseError, NotFoundError
 from .models import (
     CreatorProfile, CreatorProfileUpdate, CreatorStatus,
@@ -41,38 +76,33 @@ class CreatorProfileService:
                 {"creator_id": creator_id}
             )
             
-            # Query for creator profile (stored in users table with role='creator')
+            # Query for creator profile (stored in creators table)
             result = await session.execute(
-                select(User).where(
-                    and_(
-                        User.id == creator_id,
-                        User.role == "creator"
-                    )
-                )
+                select(Creator).where(Creator.id == creator_id)
             )
-            user = result.scalar_one_or_none()
+            creator = result.scalar_one_or_none()
             
-            if not user:
+            if not creator:
                 return None
             
             # Convert to CreatorProfile model
             return CreatorProfile(
-                id=str(user.id),
+                id=str(creator.id),
                 creator_id=creator_id,
-                email=user.email,
-                display_name=user.full_name or user.email.split('@')[0],
-                bio=user.metadata.get('bio'),
-                avatar_url=user.metadata.get('avatar_url'),
-                website_url=user.metadata.get('website_url'),
-                status=CreatorStatus(user.metadata.get('status', 'active')),
-                coaching_categories=user.metadata.get('coaching_categories', []),
-                experience_years=user.metadata.get('experience_years'),
-                certifications=user.metadata.get('certifications', []),
-                timezone=user.metadata.get('timezone', 'UTC'),
-                language=user.metadata.get('language', 'en'),
-                onboarding_completed=user.metadata.get('onboarding_completed', False),
-                created_at=user.created_at,
-                updated_at=user.updated_at
+                email=creator.email,
+                display_name=creator.full_name or creator.email.split('@')[0],
+                bio=creator.metadata.get('bio') if creator.metadata else None,
+                avatar_url=creator.metadata.get('avatar_url') if creator.metadata else None,
+                website_url=creator.metadata.get('website_url') if creator.metadata else None,
+                status=CreatorStatus.ACTIVE,  # Default status
+                coaching_categories=creator.metadata.get('coaching_categories', []) if creator.metadata else [],
+                experience_years=creator.metadata.get('experience_years') if creator.metadata else None,
+                certifications=creator.metadata.get('certifications', []) if creator.metadata else [],
+                timezone=creator.metadata.get('timezone', 'UTC') if creator.metadata else 'UTC',
+                language=creator.metadata.get('language', 'en') if creator.metadata else 'en',
+                onboarding_completed=creator.metadata.get('onboarding_completed', False) if creator.metadata else False,
+                created_at=creator.created_at,
+                updated_at=creator.updated_at
             )
             
         except Exception as e:
@@ -111,9 +141,9 @@ class CreatorProfileService:
                 if value is not None:
                     metadata_updates[field] = value
             
-            # Update user record
+            # Update creator record
             if update_fields or metadata_updates:
-                update_stmt = update(User).where(User.id == creator_id)
+                update_stmt = update(Creator).where(Creator.id == creator_id)
                 
                 if update_fields:
                     update_stmt = update_stmt.values(**update_fields)
@@ -122,7 +152,7 @@ class CreatorProfileService:
                     # Merge with existing metadata
                     update_stmt = update_stmt.values(
                         metadata=func.jsonb_set(
-                            User.metadata,
+                            Creator.metadata,
                             '{}',
                             text(f"'{metadata_updates}'::jsonb"),
                             True
@@ -205,10 +235,10 @@ class KnowledgeBaseService:
     @staticmethod
     async def list_documents(
         creator_id: str,
+        session: AsyncSession,
         page: int = 1,
         page_size: int = 20,
-        status_filter: Optional[DocumentStatus] = None,
-        session: AsyncSession
+        status_filter: Optional[DocumentStatus] = None
     ) -> Dict[str, Any]:
         """List creator's documents with pagination"""
         try:
@@ -267,10 +297,10 @@ class KnowledgeBaseService:
         creator_id: str,
         document_id: str,
         status: DocumentStatus,
+        session: AsyncSession,
         chunk_count: Optional[int] = None,
         processing_time: Optional[float] = None,
-        error_message: Optional[str] = None,
-        session: AsyncSession
+        error_message: Optional[str] = None
     ) -> Optional[KnowledgeDocument]:
         """Update document processing status"""
         try:
@@ -405,8 +435,8 @@ class AnalyticsService:
     @staticmethod
     async def get_dashboard_metrics(
         creator_id: str,
-        period_days: int = 30,
-        session: AsyncSession
+        session: AsyncSession,
+        period_days: int = 30
     ) -> DashboardMetrics:
         """Get dashboard metrics for creator"""
         try:

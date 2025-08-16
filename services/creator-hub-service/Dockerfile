@@ -78,4 +78,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD ["python3", "/usr/local/bin/healthcheck.py"]
 
 # Run the application with TCP dependency waiting and multiple workers for file handling
-CMD ["sh", "-c", "python3 /app/wait-for-services.py postgres:tcp://postgres:5432 redis:tcp://redis:6379 auth-service:http://auth-service:8001/health --timeout 120 --verbose && uvicorn app.main:app --host 0.0.0.0 --port 8002 --workers 2"]
+CMD ["sh", "-c", "python3 /app/wait-for-services.py postgres:tcp://postgres:5432 redis:tcp://redis:6379 auth-service:tcp://auth-service:8001 --timeout 120 --verbose && uvicorn app.main:app --host 0.0.0.0 --port 8002 --workers 2"]

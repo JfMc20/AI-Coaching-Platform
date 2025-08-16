@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat Widget - Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .demo-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        
+        h2 {
+            color: #007bff;
+            margin-top: 0;
+        }
+        
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .highlight {
+            background: #fff3cd;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        
+        .feature-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        
+        .feature-list li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+        }
+        
+        .feature-list li:before {
+            content: "✓";
+            color: #28a745;
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+        }
+        
+        .widget-notice {
+            position: fixed;
+            bottom: 100px;
+            right: 30px;
+            background: #007bff;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 25px;
+            font-size: 14px;
+            box-shadow: 0 4px 15px rgba(0,123,255,0.3);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .config-example {
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 AI Chat Widget Demo</h1>
+        
+        <div class="demo-section">
+            <h2>Welcome to the AI Coaching Platform Widget</h2>
+            <p>This is a demonstration of our embeddable AI chat widget. The widget allows your website visitors to interact with your AI coaching assistant directly on your site.</p>
+            
+            <ul class="feature-list">
+                <li>Real-time WebSocket communication</li>
+                <li>Responsive design for all devices</li>
+                <li>Customizable themes and colors</li>
+                <li>Easy integration with any website</li>
+                <li>Persistent conversation history</li>
+                <li>Connection status indicator</li>
+                <li>Typing indicators</li>
+                <li>Mobile-friendly interface</li>
+            </ul>
+        </div>
+        
+        <div class="demo-section">
+            <h2>How to Integrate</h2>
+            <p>Add the following code to your website to embed the AI chat widget:</p>
+            
+            <div class="code-block">
+&lt;!-- AI Chat Widget Configuration --&gt;
+&lt;script&gt;
+window.AIChatWidgetConfig = {
+    apiUrl: 'ws://localhost:8004',
+    widgetId: 'your-widget-id',
+    position: 'bottom-right', // 'bottom-right' or 'bottom-left'
+    theme: 'light', // 'light' or 'dark'
+    primaryColor: '#007bff',
+    welcomeMessage: 'Hello! How can I help you today?',
+    placeholder: 'Type your message...'
+};
+&lt;/script&gt;
+
+&lt;!-- Load the Widget --&gt;
+&lt;script src="https://your-domain.com/widget.js"&gt;&lt;/script&gt;
+            </div>
+            
+            <div class="config-example">
+                <h3>Configuration Options</h3>
+                <ul>
+                    <li><span class="highlight">apiUrl</span> - WebSocket URL for your AI service</li>
+                    <li><span class="highlight">widgetId</span> - Unique identifier for your widget</li>
+                    <li><span class="highlight">position</span> - Widget position on screen</li>
+                    <li><span class="highlight">theme</span> - Visual theme (light/dark)</li>
+                    <li><span class="highlight">primaryColor</span> - Main color for the widget</li>
+                    <li><span class="highlight">welcomeMessage</span> - Initial greeting message</li>
+                    <li><span class="highlight">placeholder</span> - Input field placeholder text</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="demo-section">
+            <h2>Try It Out!</h2>
+            <p>Look for the chat button in the bottom-right corner of this page. Click it to start a conversation with our AI assistant!</p>
+            <p><strong>Note:</strong> This is a demo environment. In production, the widget would connect to your configured AI coaching service.</p>
+        </div>
+        
+        <div class="demo-section">
+            <h2>Features in Action</h2>
+            <p>Test these features with the widget:</p>
+            <ul class="feature-list">
+                <li>Click the chat button to open/close the widget</li>
+                <li>Type a message and press Enter or click Send</li>
+                <li>See the connection status indicator in the header</li>
+                <li>Notice the typing indicator when AI is responding</li>
+                <li>Check responsiveness by resizing your browser window</li>
+                <li>Try different message lengths and formats</li>
+            </ul>
+        </div>
+    </div>
+    
+    <div class="widget-notice">
+        👈 Try the AI Chat Widget!
+    </div>
+    
+    <!-- Widget Configuration -->
+    <script>
+        window.AIChatWidgetConfig = {
+            apiUrl: 'ws://localhost:8004',
+            widgetId: 'demo-widget-001',
+            position: 'bottom-right',
+            theme: 'light',
+            primaryColor: '#007bff',
+            welcomeMessage: 'Hello! I\'m your AI coaching assistant. How can I help you today?',
+            placeholder: 'Type your message here...'
+        };
+    </script>
+    
+    <!-- Load the Widget -->
+    <script src="widget.js"></script>
+</body>
+</html>

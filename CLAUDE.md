@@ -385,6 +385,22 @@ The platform is at a **functional MVP stage** with 4 main areas completed and 3 
 4. **Testing**: Achieve 90%+ coverage with multi-tenant test isolation
 5. **Performance**: Meet <2s API response time targets
 
+### 📁 File and Service Structure Management:
+1. **ALWAYS check existing service structure** before creating new files or directories
+2. **Follow established patterns** from working services (auth-service, creator-hub-service)
+3. **Keep service-specific files within service boundaries** - Never create cross-service dependencies
+4. **Use shared/ directory only for truly shared components** - Not for service-specific implementations
+5. **Check implementation patterns** in other services before duplicating functionality
+6. **Verify file locations** in the current service before creating new structures
+
+### 🎯 Task Completion and Testing Protocol:
+1. **Complete ONE task at a time** - Never jump to next task until current is fully working
+2. **Test thoroughly** - Every endpoint, every function, every integration must be verified
+3. **Docker cache awareness** - Always rebuild without cache when making structural changes
+4. **End-to-end verification** - Test the complete user flow, not just individual components
+5. **Documentation validation** - Ensure all created endpoints are accessible and functional
+6. **Error investigation** - Understand and fix ALL errors before proceeding to next task
+
 ### 📋 Before Committing Code:
 ```bash
 # 1. Format and lint code
@@ -410,6 +426,9 @@ make health
 - ❌ **Never use blocking I/O** - Use async patterns only
 - ❌ **Never skip authentication** - All endpoints need `get_current_user()`
 - ❌ **Never commit without tests** - TDD approach preferred
+- ❌ **Never create files outside the current service context** - Always check existing structure first
+- ❌ **Never jump between tasks without completing current one** - Test thoroughly before moving on
+- ❌ **Never assume similar implementations exist** - Always check other services for patterns first
 
 ### 📚 Project Documentation:
 - **Detailed Tasks**: `.kiro/specs/mvp-foundation-platform/tasks.md`
