@@ -382,3 +382,198 @@ class Conversation(Base):
         CheckConstraint('message_count >= 0', name='valid_message_count'),
         # RLS: creator_id = current_setting('app.current_creator_id')::uuid
     )
+
+
+# =====================================================
+# Channel Service Models
+# =====================================================
+
+class ChannelConfiguration(Base):
+    """Channel configuration for multi-channel support"""
+    __tablename__ = "channel_configurations"
+    
+    # Primary key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Tenant isolation
+    creator_id = Column(UUID(as_uuid=True), ForeignKey("creators.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Channel identification
+    channel_type = Column(String(50), nullable=False)  # whatsapp, telegram, web_widget, mobile_app
+    channel_name = Column(String(100), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    
+    # Channel-specific configuration (JSON)
+    configuration = Column(JSONB, default=dict, nullable=False)
+    
+    # Authentication and connectivity
+    api_token = Column(Text, nullable=True)  # Encrypted channel API tokens
+    webhook_url = Column(String(500), nullable=True)
+    webhook_secret = Column(String(255), nullable=True)
+    
+    # Rate limiting and quotas
+    daily_message_limit = Column(Integer, default=1000, nullable=False)
+    monthly_message_limit = Column(Integer, default=30000, nullable=False)
+    current_daily_count = Column(Integer, default=0, nullable=False)
+    current_monthly_count = Column(Integer, default=0, nullable=False)
+    
+    # Status and health
+    last_health_check = Column(DateTime(timezone=True), nullable=True)
+    health_status = Column(String(50), default="unknown", nullable=False)
+    error_message = Column(Text, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    
+    # Relationships
+    creator = relationship("Creator", backref="channel_configurations")
+    
+    # Indexes and constraints
+    __table_args__ = (
+        Index('idx_channel_configs_creator_id', 'creator_id'),
+        Index('idx_channel_configs_type', 'channel_type'),
+        Index('idx_channel_configs_active', 'is_active'),
+        Index('idx_channel_configs_creator_type', 'creator_id', 'channel_type'),
+        CheckConstraint('channel_type IN (\'whatsapp\', \'telegram\', \'web_widget\', \'mobile_app\', \'instagram\', \'facebook\')', name='valid_channel_type'),
+        CheckConstraint('health_status IN (\'healthy\', \'warning\', \'error\', \'unknown\')', name='valid_health_status'),
+        CheckConstraint('daily_message_limit > 0 AND daily_message_limit <= 10000', name='valid_daily_limit'),
+        CheckConstraint('monthly_message_limit > 0 AND monthly_message_limit <= 500000', name='valid_monthly_limit'),
+        CheckConstraint('current_daily_count >= 0', name='valid_daily_count'),
+        CheckConstraint('current_monthly_count >= 0', name='valid_monthly_count'),
+        # RLS: creator_id = current_setting('app.current_creator_id')::uuid
+    )
+
+
+class Message(Base):
+    """Message model for cross-channel messaging"""
+    __tablename__ = "messages"
+    
+    # Primary key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Tenant isolation
+    creator_id = Column(UUID(as_uuid=True), ForeignKey("creators.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Message identification
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    channel_config_id = Column(UUID(as_uuid=True), ForeignKey("channel_configurations.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Message content
+    content = Column(Text, nullable=False)
+    message_type = Column(String(50), default="text", nullable=False)
+    direction = Column(String(20), nullable=False)  # inbound, outbound
+    
+    # Channel-specific data
+    external_message_id = Column(String(255), nullable=True, index=True)  # Channel's message ID
+    channel_metadata = Column(JSONB, default=dict, nullable=False)
+    
+    # User information
+    user_identifier = Column(String(255), nullable=True, index=True)  # Phone, username, etc.
+    user_name = Column(String(200), nullable=True)
+    user_metadata = Column(JSONB, default=dict, nullable=False)
+    
+    # Processing status
+    processing_status = Column(String(50), default="pending", nullable=False)
+    ai_processed = Column(Boolean, default=False, nullable=False)
+    ai_response = Column(Text, nullable=True)
+    ai_processing_time = Column(Float, nullable=True)
+    
+    # Delivery status (for outbound messages)
+    delivery_status = Column(String(50), default="pending", nullable=False)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Error handling
+    error_count = Column(Integer, default=0, nullable=False)
+    last_error = Column(Text, nullable=True)
+    
+    # Timestamps
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    received_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    
+    # Relationships
+    creator = relationship("Creator", backref="messages")
+    conversation = relationship("Conversation", backref="messages")
+    channel_configuration = relationship("ChannelConfiguration", backref="messages")
+    
+    # Indexes and constraints
+    __table_args__ = (
+        Index('idx_messages_creator_id', 'creator_id'),
+        Index('idx_messages_conversation_id', 'conversation_id'),
+        Index('idx_messages_channel_config_id', 'channel_config_id'),
+        Index('idx_messages_direction', 'direction'),
+        Index('idx_messages_processing_status', 'processing_status'),
+        Index('idx_messages_created_at', 'created_at'),
+        Index('idx_messages_external_id', 'external_message_id'),
+        Index('idx_messages_user_identifier', 'user_identifier'),
+        Index('idx_messages_creator_conversation', 'creator_id', 'conversation_id'),
+        CheckConstraint('message_type IN (\'text\', \'image\', \'audio\', \'video\', \'document\', \'location\', \'contact\')', name='valid_message_type'),
+        CheckConstraint('direction IN (\'inbound\', \'outbound\')', name='valid_direction'),
+        CheckConstraint('processing_status IN (\'pending\', \'processing\', \'completed\', \'failed\', \'skipped\')', name='valid_processing_status'),
+        CheckConstraint('delivery_status IN (\'pending\', \'sent\', \'delivered\', \'read\', \'failed\')', name='valid_delivery_status'),
+        CheckConstraint('error_count >= 0', name='valid_error_count'),
+        CheckConstraint('ai_processing_time IS NULL OR ai_processing_time >= 0', name='valid_processing_time'),
+        # RLS: creator_id = current_setting('app.current_creator_id')::uuid
+    )
+
+
+class WebhookEvent(Base):
+    """Webhook event log for channel integrations"""
+    __tablename__ = "webhook_events"
+    
+    # Primary key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Tenant isolation
+    creator_id = Column(UUID(as_uuid=True), ForeignKey("creators.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Event identification
+    channel_config_id = Column(UUID(as_uuid=True), ForeignKey("channel_configurations.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type = Column(String(100), nullable=False, index=True)
+    event_source = Column(String(50), nullable=False)  # whatsapp, telegram, etc.
+    
+    # Event data
+    payload = Column(JSONB, nullable=False)
+    headers = Column(JSONB, default=dict, nullable=False)
+    signature = Column(String(500), nullable=True)
+    
+    # Processing status
+    processing_status = Column(String(50), default="pending", nullable=False)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+    message_id = Column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True)
+    
+    # Request metadata
+    source_ip = Column(String(45), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    request_id = Column(String(255), nullable=True, index=True)
+    
+    # Error handling
+    error_message = Column(Text, nullable=True)
+    retry_count = Column(Integer, default=0, nullable=False)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    
+    # Relationships
+    creator = relationship("Creator", backref="webhook_events")
+    channel_configuration = relationship("ChannelConfiguration", backref="webhook_events")
+    message = relationship("Message", backref="webhook_events")
+    
+    # Indexes and constraints
+    __table_args__ = (
+        Index('idx_webhook_events_creator_id', 'creator_id'),
+        Index('idx_webhook_events_channel_config_id', 'channel_config_id'),
+        Index('idx_webhook_events_event_type', 'event_type'),
+        Index('idx_webhook_events_source', 'event_source'),
+        Index('idx_webhook_events_processing_status', 'processing_status'),
+        Index('idx_webhook_events_created_at', 'created_at'),
+        Index('idx_webhook_events_request_id', 'request_id'),
+        CheckConstraint('event_source IN (\'whatsapp\', \'telegram\', \'web_widget\', \'mobile_app\', \'instagram\', \'facebook\')', name='valid_event_source'),
+        CheckConstraint('processing_status IN (\'pending\', \'processing\', \'completed\', \'failed\', \'ignored\')', name='valid_webhook_processing_status'),
+        CheckConstraint('retry_count >= 0 AND retry_count <= 10', name='valid_retry_count'),
+        # RLS: creator_id = current_setting('app.current_creator_id')::uuid
+    )

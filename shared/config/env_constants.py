@@ -168,7 +168,7 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         CHROMA_SERVER_HOST: "0.0.0.0",
         CHROMA_SERVER_HTTP_PORT: "8000",
         EMBEDDING_MODEL: "nomic-embed-text",
-        CHAT_MODEL: "llama3.2",
+        CHAT_MODEL: "llama3.2:1b",
         CHROMA_SHARD_COUNT: "5",
         CHROMA_MAX_CONNECTIONS_PER_INSTANCE: "10",
         DEFAULT_CHUNK_SIZE: "1000",
