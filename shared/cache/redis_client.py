@@ -8,8 +8,8 @@ import json
 import logging
 import asyncio
 import inspect
-from typing import Optional, Any, Dict, List, Union
-from datetime import datetime, timedelta
+from typing import Optional, Any, Dict, List
+from datetime import datetime
 import hashlib
 import os
 from functools import wraps
@@ -461,6 +461,34 @@ class CacheManager:
         """Get cached conversation context"""
         cache_key = f"conv_ctx:{conversation_id}"
         return await self.redis.get(creator_id, cache_key)
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Perform cache manager health check.
+        
+        Returns:
+            Dictionary with health status information
+        """
+        try:
+            # Delegate to Redis client health check
+            redis_health = await self.redis.health_check()
+            
+            return {
+                "status": "healthy" if redis_health.get("status") == "healthy" else "unhealthy",
+                "redis_connected": redis_health.get("connected", False),
+                "memory_usage": redis_health.get("memory_usage", "unknown"),
+                "cache_manager": "operational",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Cache manager health check failed: {e}")
+            return {
+                "status": "unhealthy",
+                "error": str(e),
+                "cache_manager": "error",
+                "timestamp": datetime.utcnow().isoformat()
+            }
 
 
 # Global Redis client instance

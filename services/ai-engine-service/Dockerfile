@@ -8,20 +8,24 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install build dependencies
+# Install build dependencies including magic support
 RUN apt-get update && apt-get install -y \
     gcc \
     build-essential \
+    libmagic-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Copy pip configuration for timeout settings
+COPY services/ai-engine-service/pip.conf /etc/pip.conf
 
 # Upgrade pip and install build tools
 RUN pip install --upgrade pip setuptools wheel
 
-# Copy requirements.txt and install dependencies
+# Use centralized requirements.txt (generated from pyproject.toml)
 WORKDIR /build
 COPY services/ai-engine-service/requirements.txt .
 
-# Pre-download and build wheels
+# Pre-download and build wheels (timeout config from pip.conf)
 RUN pip wheel --wheel-dir /build/wheels -r requirements.txt
 
 # Stage 2: Runtime stage
@@ -53,7 +57,7 @@ USER appuser
 COPY --from=builder --chown=appuser:appuser /build/wheels /tmp/wheels
 COPY --from=builder --chown=appuser:appuser /build/requirements.txt /tmp/
 
-# Install dependencies from pre-built wheels
+# Install dependencies from pre-built wheels (timeout config from pip.conf)
 RUN pip install --user --no-cache-dir --find-links /tmp/wheels -r /tmp/requirements.txt && \
     rm -rf /tmp/wheels /tmp/requirements.txt
 

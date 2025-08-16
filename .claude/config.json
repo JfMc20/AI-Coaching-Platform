@@ -1,0 +1,55 @@
+{
+  "projectType": "microservices-ai-platform",
+  "primaryLanguage": "python",
+  "framework": "fastapi",
+  "architecture": "multi-tenant-microservices",
+  "testFramework": "pytest",
+  "dependencyManager": "poetry",
+  "containerization": "docker-compose",
+  "databases": ["postgresql", "redis", "chromadb"],
+  "aiFrameworks": ["ollama", "chromadb"],
+  "monitoringStack": ["opentelemetry", "prometheus"],
+  "codeQuality": {
+    "formatter": "black",
+    "linter": "flake8",
+    "typeChecker": "mypy",
+    "importSorter": "isort"
+  },
+  "testCoverage": {
+    "minimum": 85,
+    "target": 90
+  },
+  "services": [
+    {
+      "name": "auth-service",
+      "port": 8001,
+      "status": "production-ready",
+      "primaryFeatures": ["jwt", "rbac", "gdpr", "multi-tenant"]
+    },
+    {
+      "name": "creator-hub-service", 
+      "port": 8002,
+      "status": "foundation",
+      "primaryFeatures": ["content-management", "program-builder"]
+    },
+    {
+      "name": "ai-engine-service",
+      "port": 8003,
+      "status": "production-ready", 
+      "primaryFeatures": ["rag-pipeline", "ollama", "chromadb", "document-processing"]
+    },
+    {
+      "name": "channel-service",
+      "port": 8004,
+      "status": "foundation",
+      "primaryFeatures": ["websocket", "multi-channel"]
+    }
+  ],
+  "developmentPatterns": {
+    "multiTenant": true,
+    "asyncPatterns": "mandatory",
+    "authentication": "jwt-required",
+    "dataIsolation": "row-level-security",
+    "rateLimiting": "redis-backed"
+  }
+}

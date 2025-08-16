@@ -14,9 +14,7 @@ from shared.config.env_constants import (
     AUTH_SERVICE_URL, AI_ENGINE_SERVICE_URL, CORS_ORIGINS, LOG_LEVEL
 )
 from shared.config.settings import (
-    AuthServiceConfig, AIEngineServiceConfig, CreatorHubServiceConfig, 
-    ChannelServiceConfig, validate_required_env_vars, safe_int_env,
-    get_database_url_with_validation
+    validate_required_env_vars, safe_int_env, get_database_url_with_validation
 )
 
 # Test-specific config classes that use direct environment access

@@ -1,0 +1,92 @@
+{
+  "python.defaultInterpreterPath": ".venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "python.linting.enabled": true,
+  "python.linting.flake8Enabled": true,
+  "python.linting.mypyEnabled": true,
+  "python.formatting.provider": "black",
+  "python.sortImports.args": ["--profile", "black"],
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": [
+    "tests/",
+    "--cov=shared",
+    "--cov=services",
+    "--cov-report=html",
+    "--cov-report=term-missing"
+  ],
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    ".pytest_cache": true,
+    "htmlcov": false,
+    "coverage.xml": false,
+    ".coverage": true
+  },
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": true
+  },
+  "files.associations": {
+    "*.md": "markdown",
+    "Dockerfile*": "dockerfile",
+    "docker-compose*.yml": "dockercompose"
+  },
+  "yaml.schemas": {
+    "https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json": "docker-compose*.yml"
+  },
+  "python.analysis.extraPaths": [
+    "./shared",
+    "./services",
+    "./tests"
+  ],
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.typeCheckingMode": "basic",
+  "emmet.includeLanguages": {
+    "jinja-html": "html"
+  },
+  "workbench.colorCustomizations": {
+    "statusBar.background": "#1e88e5",
+    "statusBar.foreground": "#ffffff",
+    "statusBar.debuggingBackground": "#ff5722",
+    "statusBar.debuggingForeground": "#ffffff"
+  },
+  "terminal.integrated.env.linux": {
+    "POETRY_VENV_IN_PROJECT": "true"
+  },
+  "terminal.integrated.env.osx": {
+    "POETRY_VENV_IN_PROJECT": "true"
+  },
+  "terminal.integrated.env.windows": {
+    "POETRY_VENV_IN_PROJECT": "true"
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/bower_components": true,
+    "**/*.code-search": true,
+    "**/__pycache__": true,
+    "**/htmlcov": true,
+    "**/.pytest_cache": true,
+    "**/logs": true
+  },
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "*.py": "${capture}.pyc, ${capture}.pyo",
+    "docker-compose.yml": "docker-compose.*.yml",
+    "pyproject.toml": "poetry.lock, pytest.ini, .coverage, coverage.xml",
+    "README.md": "CLAUDE.md, .gitignore, .dockerignore"
+  },
+  "git.ignoreLimitWarning": true,
+  "extensions.recommendations": [
+    "ms-python.python",
+    "ms-python.flake8",
+    "ms-python.black-formatter",
+    "ms-python.isort",
+    "ms-vscode.vscode-typescript-next",
+    "bradlc.vscode-tailwindcss",
+    "ms-vscode.vscode-json",
+    "redhat.vscode-yaml",
+    "ms-azuretools.vscode-docker",
+    "ms-vscode.test-adapter-converter"
+  ]
+}

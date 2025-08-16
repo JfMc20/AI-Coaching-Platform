@@ -9,7 +9,7 @@ for all ChromaDB-related settings, with fallback to environment-specific default
 import hashlib
 import logging
 import asyncio
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
@@ -204,17 +204,14 @@ if not CHROMADB_AVAILABLE:
 
 class ChromaDBError(BaseServiceException):
     """ChromaDB specific errors"""
-    pass
 
 
 class ChromaDBConnectionError(ChromaDBError):
     """ChromaDB connection errors"""
-    pass
 
 
 class ChromaDBCollectionError(ChromaDBError):
     """ChromaDB collection management errors"""
-    pass
 
 
 @dataclass

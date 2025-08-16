@@ -4,8 +4,7 @@ Tests Redis client, session store, message queue, and health checks.
 """
 
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 from shared.cache.redis_client import RedisClient
 from shared.cache.session_store import SessionStore
@@ -27,22 +26,6 @@ class TestRedisClient:
         mock.expire.return_value = True
         mock.flushdb.return_value = True
         return mock
-
-    @pytest.fixture
-    def redis_client(self, mock_redis):
-        """Create Redis client with mocked connection."""
-        client = RedisClient("redis://localhost:6379")
-        # Mock the get_client method to return our mock
-        client.get_client = AsyncMock(return_value=mock_redis)
-        return clientn_value = 1
-    mock.exists.return_value = 1
-
-    # DATA PAYLOADS (returned as bytes)
-    # get() returns the raw value as bytes, or None if not found.
-    # The application code is responsible for decoding it (e.g., json.loads).
-    mock.get.return_value = json.dumps({"test": "value"}).encode('utf-8')
-
-    return mock
 
     @pytest.fixture
     def redis_client(self, mock_redis):

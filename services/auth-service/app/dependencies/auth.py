@@ -8,9 +8,7 @@ import uuid
 import time
 import redis.asyncio as redis
 import logging
-import asyncio
-from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
+from typing import Dict, Any
 
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials

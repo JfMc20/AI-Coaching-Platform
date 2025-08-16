@@ -4,13 +4,11 @@ SQLAlchemy models with multi-tenant Row Level Security support
 """
 
 import uuid
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
 from sqlalchemy import (
-    Column, String, Boolean, DateTime, Text, JSON, Integer,
-    ForeignKey, Index, UniqueConstraint, CheckConstraint
+    Column, String, Boolean, DateTime, Text, JSON, Integer, Float,
+    ForeignKey, Index, CheckConstraint
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -245,4 +243,142 @@ class AuditLog(Base):
         Index('idx_audit_logs_severity', 'severity'),
         CheckConstraint('event_category IN (\'auth\', \'data\', \'admin\', \'security\', \'system\')', name='valid_event_category'),
         CheckConstraint('severity IN (\'debug\', \'info\', \'warning\', \'error\', \'critical\')', name='valid_severity'),
+    )
+
+
+# =====================================================
+# Creator Hub Service Models
+# =====================================================
+
+class Document(Base):
+    """Document model for Creator Hub knowledge base"""
+    __tablename__ = "documents"
+    
+    # Primary key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Tenant isolation
+    creator_id = Column(UUID(as_uuid=True), ForeignKey("creators.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Document metadata
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    document_metadata = Column(JSONB, default=dict, nullable=False)
+    
+    # Processing status
+    status = Column(String(50), default="uploading", nullable=False)
+    chunk_count = Column(Integer, default=0, nullable=False)
+    processing_time = Column(Float, nullable=True)
+    error_message = Column(Text, nullable=True)
+    
+    # Storage information
+    file_path = Column(String(500), nullable=True)
+    embeddings_stored = Column(Boolean, default=False, nullable=False)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    
+    # Relationships
+    creator = relationship("Creator", backref="documents")
+    
+    # Indexes and constraints
+    __table_args__ = (
+        Index('idx_documents_creator_id', 'creator_id'),
+        Index('idx_documents_status', 'status'),
+        Index('idx_documents_created_at', 'created_at'),
+        Index('idx_documents_creator_status', 'creator_id', 'status'),
+        CheckConstraint('status IN (\'uploading\', \'processing\', \'completed\', \'failed\', \'archived\')', name='valid_document_status'),
+        CheckConstraint('chunk_count >= 0', name='valid_chunk_count'),
+        CheckConstraint('processing_time IS NULL OR processing_time >= 0', name='valid_processing_time'),
+        # RLS: creator_id = current_setting('app.current_creator_id')::uuid
+    )
+
+
+class WidgetConfiguration(Base):
+    """Widget configuration for Creator Hub"""
+    __tablename__ = "widget_configurations"
+    
+    # Primary key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Tenant isolation
+    creator_id = Column(UUID(as_uuid=True), ForeignKey("creators.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Configuration metadata
+    name = Column(String(100), nullable=False)
+    description = Column(String(500), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    
+    # Widget settings (JSON)
+    settings = Column(JSONB, default=dict, nullable=False)
+    
+    # Behavior settings
+    welcome_message = Column(Text, default="Hello! How can I help you today?", nullable=False)
+    placeholder_text = Column(String(200), default="Type your message...", nullable=False)
+    enable_file_upload = Column(Boolean, default=True, nullable=False)
+    enable_voice_input = Column(Boolean, default=False, nullable=False)
+    
+    # Security and integration
+    allowed_domains = Column(JSONB, default=list, nullable=False)
+    rate_limit_messages = Column(Integer, default=10, nullable=False)
+    track_analytics = Column(Boolean, default=True, nullable=False)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    
+    # Relationships
+    creator = relationship("Creator", backref="widget_configurations")
+    
+    # Indexes and constraints
+    __table_args__ = (
+        Index('idx_widget_configs_creator_id', 'creator_id'),
+        Index('idx_widget_configs_active', 'is_active'),
+        CheckConstraint('rate_limit_messages > 0 AND rate_limit_messages <= 100', name='valid_rate_limit'),
+        # RLS: creator_id = current_setting('app.current_creator_id')::uuid
+    )
+
+
+class Conversation(Base):
+    """Conversation model for Creator Hub analytics"""
+    __tablename__ = "conversations"
+    
+    # Primary key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Tenant isolation
+    creator_id = Column(UUID(as_uuid=True), ForeignKey("creators.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # User information (nullable for anonymous)
+    user_id = Column(UUID(as_uuid=True), nullable=True)
+    
+    # Conversation metadata
+    title = Column(String(200), nullable=True)
+    status = Column(String(50), default="active", nullable=False)
+    message_count = Column(Integer, default=0, nullable=False)
+    satisfaction_rating = Column(Integer, nullable=True)
+    
+    # Categorization
+    tags = Column(JSONB, default=list, nullable=False)
+    conversation_metadata = Column(JSONB, default=dict, nullable=False)
+    
+    # Timestamps
+    last_message_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    
+    # Relationships
+    creator = relationship("Creator", backref="conversations")
+    
+    # Indexes and constraints
+    __table_args__ = (
+        Index('idx_conversations_creator_id', 'creator_id'),
+        Index('idx_conversations_status', 'status'),
+        Index('idx_conversations_created_at', 'created_at'),
+        Index('idx_conversations_last_message', 'last_message_at'),
+        CheckConstraint('status IN (\'active\', \'paused\', \'completed\', \'archived\')', name='valid_conversation_status'),
+        CheckConstraint('satisfaction_rating IS NULL OR (satisfaction_rating >= 1 AND satisfaction_rating <= 5)', name='valid_rating'),
+        CheckConstraint('message_count >= 0', name='valid_message_count'),
+        # RLS: creator_id = current_setting('app.current_creator_id')::uuid
     )

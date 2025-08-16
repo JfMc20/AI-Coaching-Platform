@@ -5,20 +5,16 @@ Implements comprehensive metrics collection for SLA compliance, performance moni
 and cost tracking with privacy protection.
 """
 
-import time
 import logging
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
-from datetime import datetime, timedelta
 
 from prometheus_client import (
-    Counter, Histogram, Gauge, Summary, 
-    CollectorRegistry, generate_latest,
-    CONTENT_TYPE_LATEST
+    Counter, Histogram, Gauge, CollectorRegistry, 
+    generate_latest
 )
 
-from shared.config.env_constants import get_env_value
 
 logger = logging.getLogger(__name__)
 
@@ -484,7 +480,6 @@ class PerformanceMetrics:
         """Record latency percentiles for SLA monitoring"""
         # These would typically be calculated from histogram data
         # Implementation depends on your metrics backend
-        pass
     
     def check_sla_compliance(self) -> Dict[str, bool]:
         """

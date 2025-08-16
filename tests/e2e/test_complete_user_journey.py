@@ -3,8 +3,6 @@ End-to-end tests for complete user journeys.
 Tests full workflows from user registration to AI interactions.
 """
 
-import pytest
-from httpx import AsyncClient
 import asyncio
 
 

@@ -20,24 +20,19 @@ class BaseServiceException(Exception):
 
 class ValidationError(BaseServiceException):
     """Raised when data validation fails"""
-    pass
 
 
 class NotFoundError(BaseServiceException):
     """Raised when a requested resource is not found"""
-    pass
 
 
 class UnauthorizedError(BaseServiceException):
     """Raised when user is not authorized to perform an action"""
-    pass
 
 
 class ConfigurationError(BaseServiceException):
     """Raised when there's a configuration error"""
-    pass
 
 
 class ExternalServiceError(BaseServiceException):
     """Raised when an external service fails"""
-    pass

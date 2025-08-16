@@ -7,8 +7,7 @@ import os
 import re
 import hashlib
 import logging
-import asyncio
-from typing import Optional, List, Dict, Any, Set
+from typing import Optional, List, Dict, Set
 from dataclasses import dataclass
 from enum import Enum
 import httpx
@@ -192,6 +191,39 @@ class PasswordHasher:
             logger.error(f"Password verification failed: {e}")
             return False
     
+    def validate_password_strength(self, password: str) -> bool:
+        """
+        Validate password strength (simplified version for backward compatibility).
+        
+        Args:
+            password: Password to validate
+            
+        Returns:
+            True if password meets basic strength requirements
+        """
+        try:
+            # Basic validation rules
+            if len(password) < 8:
+                return False
+            
+            # Check for required character types
+            has_upper = any(c.isupper() for c in password)
+            has_lower = any(c.islower() for c in password)
+            has_digit = any(c.isdigit() for c in password)
+            has_special = any(c in "!@#$%^&*(),.?\":{}|<>" for c in password)
+            
+            return has_upper and has_lower and has_digit and has_special
+            
+        except Exception as e:
+            logger.warning(f"Password strength validation error: {e}")
+            return False
+    
+    def check_strength(self, password: str) -> bool:
+        """
+        Alias for validate_password_strength for backward compatibility.
+        """
+        return self.validate_password_strength(password)
+
     def needs_rehash(self, hashed_password: str) -> bool:
         """
         Check if a password hash needs to be updated

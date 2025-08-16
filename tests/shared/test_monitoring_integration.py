@@ -12,16 +12,16 @@ Tests the complete monitoring infrastructure including:
 import asyncio
 import pytest
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import Mock, patch, AsyncMock
 
 from shared.monitoring import (
     get_tracer, trace_ml_operation, create_correlation_id,
     get_metrics_collector, MLMetrics, OperationType,
     PrivacyPreservingMonitor, PrivacyConfig,
-    get_health_checker, get_alert_manager,
     ModelHealthChecker, SyntheticRequestRunner,
-    AlertManager, SLAMonitor, HealthStatus, AlertSeverity
+    AlertManager, HealthStatus,
+    AlertSeverity
 )
 
 
@@ -162,7 +162,7 @@ class TestMonitoringIntegration:
     async def test_health_checker_model_latency(self, health_checker):
         """Test model latency checking"""
         # Test with mock synthetic request
-        start_time = time.time()
+        time.time()
         
         result = await health_checker.check_model_latency(
             "test-model", OperationType.CHAT

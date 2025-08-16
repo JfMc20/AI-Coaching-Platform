@@ -1,7 +1,6 @@
 """Business logic validators"""
 
 import uuid
-from typing import Optional
 
 
 def validate_creator_id(creator_id: str) -> bool:

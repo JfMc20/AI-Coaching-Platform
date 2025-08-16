@@ -6,8 +6,8 @@ Provides comprehensive health monitoring for Redis services
 import asyncio
 import logging
 import uuid
-from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
+from datetime import datetime
 from .redis_client import RedisClient, get_redis_client
 from .session_store import SessionStore, get_session_store
 from .message_queue import MessageQueue, get_message_queue

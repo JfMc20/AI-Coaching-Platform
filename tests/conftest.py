@@ -12,6 +12,16 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# Configure pytest plugins to auto-load fixture modules
+pytest_plugins = [
+    "tests.fixtures.common_fixtures",
+    "tests.fixtures.auth_fixtures",
+    "tests.fixtures.ai_fixtures", 
+    "tests.fixtures.channel_fixtures",
+    "tests.fixtures.mock_fixes",
+    "tests.fixtures.service_integration_fixtures",
+]
+
 # Set test environment variables before importing any modules
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("DEBUG", "true")
@@ -28,6 +38,18 @@ os.environ.setdefault("EMBEDDING_MODEL", "nomic-embed-text")
 os.environ.setdefault("CHAT_MODEL", "llama3.2")
 os.environ.setdefault("CHROMA_SHARD_COUNT", "5")
 os.environ.setdefault("VAULT_ENABLED", "false")
+
+# Service URLs for integration tests
+os.environ.setdefault("AUTH_SERVICE_URL", "http://localhost:8001")
+os.environ.setdefault("CREATOR_HUB_SERVICE_URL", "http://localhost:8002")
+os.environ.setdefault("AI_ENGINE_SERVICE_URL", "http://localhost:8003")
+os.environ.setdefault("CHANNEL_SERVICE_URL", "http://localhost:8004")
+
+# Monitoring system test configuration
+os.environ.setdefault("MONITORING_SAMPLING_RATE", "1.0")  # 100% sampling for tests
+os.environ.setdefault("MONITORING_RETENTION_DAYS", "1")   # Short retention for tests
+os.environ.setdefault("ENABLE_PII_DETECTION", "true")
+os.environ.setdefault("HEALTH_CHECK_INTERVAL_MINUTES", "1")  # Fast checks for testing
 
 # Load test environment file if it exists
 test_env_file = project_root / ".env.test"
@@ -58,13 +80,12 @@ def setup_test_environment():
     
     # Cleanup after tests
     # Remove test files if needed
-    pass
 
 
 @pytest.fixture
 def mock_redis():
     """Mock Redis client for testing."""
-    from unittest.mock import AsyncMock, Mock
+    from unittest.mock import AsyncMock
     
     mock_redis = AsyncMock()
     mock_redis.get = AsyncMock(return_value=None)
@@ -80,7 +101,7 @@ def mock_redis():
 @pytest.fixture
 def mock_database():
     """Mock database session for testing."""
-    from unittest.mock import AsyncMock, Mock
+    from unittest.mock import AsyncMock
     
     mock_session = AsyncMock()
     mock_session.execute = AsyncMock()

@@ -3,13 +3,11 @@ Creator Hub Service - MVP Coaching AI Platform
 Handles creator management, content, and widget configuration
 """
 
-import os
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from shared.config.settings import validate_service_environment
 # Import centralized environment constants and helpers
@@ -118,118 +116,13 @@ async def root():
     }
 
 
-# Creator management endpoints (to be implemented in subsequent tasks)
-@app.get("/api/v1/creators/profile", tags=["creators"])
-async def get_creator_profile():
-    """Get creator profile information"""
-    # TODO: Implement in task 6
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint will be implemented in task 6"
-    )
+# Import routers
+from .routers import creators, knowledge, widgets
 
-
-@app.put("/api/v1/creators/profile", tags=["creators"])
-async def update_creator_profile():
-    """Update creator profile information"""
-    # TODO: Implement in task 6
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint will be implemented in task 6"
-    )
-
-
-@app.get("/api/v1/creators/dashboard/metrics", tags=["creators"])
-async def get_dashboard_metrics():
-    """Get creator dashboard metrics"""
-    # TODO: Implement in task 6
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint will be implemented in task 6"
-    )
-
-
-# Knowledge base endpoints
-@app.post("/api/v1/creators/knowledge/upload", tags=["knowledge"])
-async def upload_document():
-    """Upload and process a document"""
-    # TODO: Implement in task 4.2
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint will be implemented in task 4.2"
-    )
-
-
-@app.get("/api/v1/creators/knowledge/documents", tags=["knowledge"])
-async def list_documents():
-    """List creator's documents"""
-    # TODO: Implement in task 6
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint will be implemented in task 6"
-    )
-
-
-@app.delete("/api/v1/creators/knowledge/documents/{doc_id}", tags=["knowledge"])
-async def delete_document(doc_id: str):
-    """Delete a document"""
-    # TODO: Implement in task 6
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint will be implemented in task 6"
-    )
-
-
-# Widget configuration endpoints
-@app.get("/api/v1/creators/widget/config", tags=["widgets"])
-async def get_widget_config():
-    """Get widget configuration"""
-    # TODO: Implement in task 7
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint will be implemented in task 7"
-    )
-
-
-@app.put("/api/v1/creators/widget/config", tags=["widgets"])
-async def update_widget_config():
-    """Update widget configuration"""
-    # TODO: Implement in task 7
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint will be implemented in task 7"
-    )
-
-
-@app.get("/api/v1/creators/widget/embed-code", tags=["widgets"])
-async def get_embed_code():
-    """Get widget embed code"""
-    # TODO: Implement in task 7
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint will be implemented in task 7"
-    )
-
-
-# Conversation management endpoints
-@app.get("/api/v1/creators/conversations", tags=["conversations"])
-async def list_conversations():
-    """List creator's conversations"""
-    # TODO: Implement in task 6
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint will be implemented in task 6"
-    )
-
-
-@app.get("/api/v1/creators/conversations/{conversation_id}", tags=["conversations"])
-async def get_conversation(conversation_id: str):
-    """Get conversation details"""
-    # TODO: Implement in task 6
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Endpoint will be implemented in task 6"
-    )
+# Include routers
+app.include_router(creators.router)
+app.include_router(knowledge.router)
+app.include_router(widgets.router)
 
 
 if __name__ == "__main__":

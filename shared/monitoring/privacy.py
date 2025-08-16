@@ -11,7 +11,7 @@ import json
 import logging
 import random
 import time
-from typing import Dict, Any, Optional, List, Set, Tuple
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime, timedelta
@@ -390,7 +390,7 @@ class DataSampler:
             Number of samples deleted
         """
         try:
-            current_time = datetime.utcnow()
+            datetime.utcnow()
             deleted_count = 0
             
             # This would typically query your storage backend

@@ -8,13 +8,12 @@ and automated health validation for ML services.
 import asyncio
 import time
 import logging
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime, timedelta
 
 import httpx
-from shared.config.env_constants import get_env_value
 from .metrics import get_metrics_collector, OperationType
 
 logger = logging.getLogger(__name__)
@@ -206,7 +205,7 @@ class ModelHealthChecker:
         
         try:
             # Execute synthetic request (this would call actual ML service)
-            result = await self._execute_synthetic_request(synthetic_request, model_name)
+            await self._execute_synthetic_request(synthetic_request, model_name)
             duration_ms = (time.time() - start_time) * 1000
             
             # Check if latency is within acceptable range

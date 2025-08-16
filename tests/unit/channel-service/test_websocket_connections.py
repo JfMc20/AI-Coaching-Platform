@@ -6,9 +6,6 @@ Fixtures are now centralized in tests/fixtures/channel_fixtures.py and automatic
 available through the main conftest.py configuration.
 """
 
-import pytest
-from fastapi.testclient import TestClient
-import json
 
 
 class TestWebSocketConnections:

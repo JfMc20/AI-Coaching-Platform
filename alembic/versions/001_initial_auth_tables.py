@@ -19,19 +19,19 @@ depends_on = None
 def upgrade() -> None:
     # Create creators table
     op.create_table('creators',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text('gen_random_uuid()')),
         sa.Column('email', sa.String(length=255), nullable=False),
         sa.Column('password_hash', sa.String(length=255), nullable=False),
         sa.Column('full_name', sa.String(length=100), nullable=False),
         sa.Column('company_name', sa.String(length=100), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False),
-        sa.Column('is_verified', sa.Boolean(), nullable=False),
-        sa.Column('subscription_tier', sa.String(length=50), nullable=False),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
+        sa.Column('is_verified', sa.Boolean(), nullable=False, server_default=sa.text('false')),
+        sa.Column('subscription_tier', sa.String(length=50), nullable=False, server_default=sa.text("'free'")),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('last_login_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('password_changed_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('failed_login_attempts', sa.Integer(), nullable=False),
+        sa.Column('failed_login_attempts', sa.Integer(), nullable=False, server_default=sa.text('0')),
         sa.Column('locked_until', sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint("email ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'", name='valid_email'),
         sa.CheckConstraint("subscription_tier IN ('free', 'pro', 'enterprise')", name='valid_subscription_tier'),
@@ -44,7 +44,7 @@ def upgrade() -> None:
 
     # Create refresh_tokens table
     op.create_table('refresh_tokens',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text('gen_random_uuid()')),
         sa.Column('token_hash', sa.String(length=255), nullable=False),
         sa.Column('creator_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('family_id', postgresql.UUID(as_uuid=True), nullable=False),
@@ -55,7 +55,7 @@ def upgrade() -> None:
         sa.CheckConstraint('expires_at > created_at', name='valid_refresh_token_expiration'),
         sa.Column('client_ip', sa.String(length=45), nullable=True),
         sa.Column('user_agent', sa.Text(), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.ForeignKeyConstraint(['creator_id'], ['creators.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('token_hash')
@@ -67,15 +67,15 @@ def upgrade() -> None:
 
     # Create user_sessions table
     op.create_table('user_sessions',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text('gen_random_uuid()')),
         sa.Column('session_id', sa.String(length=255), nullable=False),
         sa.Column('creator_id', postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('channel', sa.String(length=50), nullable=False),
+        sa.Column('channel', sa.String(length=50), nullable=False, server_default=sa.text("'web_widget'")),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('last_activity', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('session_metadata', sa.JSON(), nullable=False),
-        sa.Column('is_active', sa.Boolean(), nullable=False),
+        sa.Column('session_metadata', sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('client_ip', sa.String(length=45), nullable=True),
         sa.Column('user_agent', sa.Text(), nullable=True),
         sa.Column('referrer', sa.Text(), nullable=True),
@@ -92,7 +92,7 @@ def upgrade() -> None:
 
     # Create password_reset_tokens table
     op.create_table('password_reset_tokens',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text('gen_random_uuid()')),
         sa.Column('token_hash', sa.String(length=255), nullable=False),
         sa.Column('creator_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -100,7 +100,7 @@ def upgrade() -> None:
         sa.Column('used_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('client_ip', sa.String(length=45), nullable=True),
         sa.Column('user_agent', sa.Text(), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.CheckConstraint('expires_at > created_at', name='valid_reset_token_expiration'),
         sa.ForeignKeyConstraint(['creator_id'], ['creators.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
@@ -112,7 +112,7 @@ def upgrade() -> None:
 
     # Create jwt_blacklist table
     op.create_table('jwt_blacklist',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text('gen_random_uuid()')),
         sa.Column('jti', sa.String(length=255), nullable=False),
         sa.Column('creator_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -130,17 +130,17 @@ def upgrade() -> None:
 
     # Create audit_logs table
     op.create_table('audit_logs',
-        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text('gen_random_uuid()')),
         sa.Column('creator_id', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('event_type', sa.String(length=50), nullable=False),
         sa.Column('event_category', sa.String(length=50), nullable=False),
         sa.Column('description', sa.Text(), nullable=False),
-        sa.Column('event_metadata', sa.JSON(), nullable=False),
+        sa.Column('event_metadata', sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
         sa.Column('client_ip', sa.String(length=45), nullable=True),
         sa.Column('user_agent', sa.Text(), nullable=True),
         sa.Column('request_id', sa.String(length=255), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('severity', sa.String(length=20), nullable=False),
+        sa.Column('severity', sa.String(length=20), nullable=False, server_default=sa.text("'info'")),
         sa.CheckConstraint("event_category IN ('auth', 'data', 'admin', 'security', 'system')", name='valid_event_category'),
         sa.CheckConstraint("severity IN ('debug', 'info', 'warning', 'error', 'critical')", name='valid_severity'),
         sa.ForeignKeyConstraint(['creator_id'], ['creators.id'], ondelete='SET NULL'),
@@ -159,8 +159,11 @@ def upgrade() -> None:
         
         -- Create policy for refresh_tokens
         CREATE POLICY tenant_isolation ON refresh_tokens
-            FOR ALL TO authenticated_user
-            USING (creator_id = current_setting('app.current_creator_id')::uuid);
+            FOR ALL TO PUBLIC
+            USING (creator_id = COALESCE(
+                NULLIF(current_setting('app.current_creator_id', true), '')::uuid,
+                NULL
+            ));
     """)
     
     op.execute("""
@@ -169,8 +172,11 @@ def upgrade() -> None:
         
         -- Create policy for user_sessions
         CREATE POLICY tenant_isolation ON user_sessions
-            FOR ALL TO authenticated_user
-            USING (creator_id = current_setting('app.current_creator_id')::uuid);
+            FOR ALL TO PUBLIC
+            USING (creator_id = COALESCE(
+                NULLIF(current_setting('app.current_creator_id', true), '')::uuid,
+                NULL
+            ));
     """)
     
     op.execute("""
@@ -179,8 +185,11 @@ def upgrade() -> None:
         
         -- Create policy for password_reset_tokens
         CREATE POLICY tenant_isolation ON password_reset_tokens
-            FOR ALL TO authenticated_user
-            USING (creator_id = current_setting('app.current_creator_id')::uuid);
+            FOR ALL TO PUBLIC
+            USING (creator_id = COALESCE(
+                NULLIF(current_setting('app.current_creator_id', true), '')::uuid,
+                NULL
+            ));
     """)
     
     op.execute("""
@@ -189,10 +198,13 @@ def upgrade() -> None:
         
         -- Create policy for audit_logs (creators can only see their own logs)
         CREATE POLICY tenant_isolation ON audit_logs
-            FOR SELECT TO authenticated_user
+            FOR SELECT TO PUBLIC
             USING (
-                creator_id = current_setting('app.current_creator_id')::uuid
-                OR current_setting('app.current_creator_id') = 'system'
+                creator_id = COALESCE(
+                    NULLIF(current_setting('app.current_creator_id', true), '')::uuid,
+                    NULL
+                )
+                OR current_setting('app.current_creator_id', true) = 'system'
             );
     """)
 

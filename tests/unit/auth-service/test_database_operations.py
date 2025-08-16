@@ -3,10 +3,6 @@ Tests for database operations and multi-tenant isolation.
 Tests database manager, connection pooling, and Row Level Security.
 """
 
-import pytest
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import IntegrityError
 
 from shared.models.database import Creator
 

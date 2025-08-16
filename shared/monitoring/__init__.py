@@ -43,6 +43,9 @@ from .alerting import (
     AlertManager,
     SLAMonitor,
     IncidentResponse,
+    AlertSeverity,
+    AlertType,
+    AlertStatus,
     get_alert_manager
 )
 
@@ -78,5 +81,8 @@ __all__ = [
     "AlertManager",
     "SLAMonitor", 
     "IncidentResponse",
+    "AlertSeverity",
+    "AlertType",
+    "AlertStatus",
     "get_alert_manager"
 ]

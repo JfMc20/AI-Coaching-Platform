@@ -1,0 +1,76 @@
+{
+  "id": "local-environment",
+  "name": "Local Development",
+  "values": [
+    {
+      "key": "base_url_auth",
+      "value": "http://localhost:8001",
+      "enabled": true
+    },
+    {
+      "key": "base_url_creator",
+      "value": "http://localhost:8002", 
+      "enabled": true
+    },
+    {
+      "key": "base_url_ai",
+      "value": "http://localhost:8003",
+      "enabled": true
+    },
+    {
+      "key": "base_url_channel",
+      "value": "http://localhost:8004",
+      "enabled": true
+    },
+    {
+      "key": "test_email",
+      "value": "test.creator@example.com",
+      "enabled": true
+    },
+    {
+      "key": "test_password",
+      "value": "TestPassword123!",
+      "enabled": true
+    },
+    {
+      "key": "test_full_name",
+      "value": "Test Creator",
+      "enabled": true
+    },
+    {
+      "key": "test_company_name",
+      "value": "Test Company LLC",
+      "enabled": true
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "creator_id",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "conversation_id",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "document_id",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "session_id",
+      "value": "",
+      "enabled": true
+    }
+  ]
+}

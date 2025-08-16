@@ -6,14 +6,13 @@ Tests advanced caching, search optimization, and query canonicalization.
 import pytest
 import asyncio
 import hashlib
-import json
 from unittest.mock import AsyncMock, Mock, patch
-from datetime import datetime, timedelta
+from datetime import datetime
 
 try:
     from services.ai_engine_service.app.embedding_manager import (
         EmbeddingManager, SearchCache, QueryCanonicalizer, SearchCacheKey,
-        CachedSearchResult, EmbeddingError, SearchCacheError
+        CachedSearchResult, EmbeddingError
     )
 except ImportError:
     pytest.skip("Embedding manager components not available", allow_module_level=True)

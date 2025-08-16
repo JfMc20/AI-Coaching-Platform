@@ -10,7 +10,6 @@ from typing import AsyncGenerator, Optional
 from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.pool import NullPool
 from sqlalchemy import event, text
 import time
 
@@ -231,7 +230,7 @@ async def init_database():
         manager = get_db_manager()
         
         # Check if we should auto-create tables (development only)
-        auto_create = os.getenv("DB_AUTO_CREATE", "false").lower() == "true"
+        auto_create = os.getenv("DB_AUTO_CREATE", "true").lower() == "true"
         
         if auto_create:
             logger.warning("DB_AUTO_CREATE is enabled - creating tables directly (development only)")

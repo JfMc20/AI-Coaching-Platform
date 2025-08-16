@@ -1,7 +1,6 @@
 """Document processing models"""
 
 from pydantic import BaseModel, Field, validator
-from datetime import datetime
 from typing import Optional, Dict, Any, List
 from enum import Enum
 from .base import TenantAwareEntity

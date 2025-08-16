@@ -3,7 +3,6 @@
 import uuid
 import hashlib
 import secrets
-from typing import Optional
 
 
 def generate_correlation_id() -> str:
@@ -24,12 +23,28 @@ def generate_document_id(file_path: str, creator_id: str) -> str:
 
 def sanitize_filename(filename: str) -> str:
     """Sanitize filename for safe storage"""
-    # Remove or replace dangerous characters
     import re
+    
+    if not filename:
+        return "unnamed_file"
+    
+    # Remove path traversal attempts
+    sanitized = filename.replace('..', '')
+    
+    # Remove or replace dangerous characters
     # Keep only alphanumeric, dots, hyphens, and underscores
-    sanitized = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
+    sanitized = re.sub(r'[^a-zA-Z0-9._-]', '_', sanitized)
+    
+    # Remove leading/trailing dots and underscores
+    sanitized = sanitized.strip('._')
+    
+    # Ensure we don't have empty filename
+    if not sanitized:
+        sanitized = "unnamed_file"
+    
     # Limit length
     if len(sanitized) > 100:
         name, ext = sanitized.rsplit('.', 1) if '.' in sanitized else (sanitized, '')
         sanitized = name[:95] + ('.' + ext if ext else '')
+    
     return sanitized

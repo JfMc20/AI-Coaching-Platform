@@ -8,33 +8,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install build dependencies
+# Install build dependencies including PostgreSQL dev headers
 RUN apt-get update && apt-get install -y \
     gcc \
     build-essential \
+    libpq-dev \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip and install build tools
 RUN pip install --upgrade pip setuptools wheel
 
-# Create requirements.txt from dependencies
+# Use centralized requirements.txt (generated from pyproject.toml)
 WORKDIR /build
-COPY services/auth-service/pyproject.toml /build/
-
-# Create requirements.txt with exact versions
-RUN echo "fastapi==0.104.0" > requirements.txt && \
-    echo "uvicorn[standard]==0.24.0" >> requirements.txt && \
-    echo "sqlalchemy==2.0.23" >> requirements.txt && \
-    echo "alembic==1.12.1" >> requirements.txt && \
-    echo "asyncpg==0.29.0" >> requirements.txt && \
-    echo "redis==5.0.1" >> requirements.txt && \
-    echo "python-jose[cryptography]==3.3.0" >> requirements.txt && \
-    echo "python-multipart==0.0.6" >> requirements.txt && \
-    echo "pydantic[email]==2.5.0" >> requirements.txt && \
-    echo "httpx==0.25.0" >> requirements.txt && \
-    echo "passlib[bcrypt]==1.7.4" >> requirements.txt && \
-    echo "argon2-cffi==23.1.0" >> requirements.txt && \
-    echo "python-dotenv==1.0.0" >> requirements.txt
+COPY services/auth-service/requirements.txt .
 
 # Pre-download and build wheels
 RUN pip wheel --wheel-dir /build/wheels -r requirements.txt
@@ -75,8 +62,12 @@ RUN pip install --user --no-cache-dir --find-links /tmp/wheels -r /tmp/requireme
 # Copy scripts and application files with proper ownership
 COPY --chown=appuser:appuser scripts/wait-for-services.py /app/wait-for-services.py
 COPY --chown=appuser:appuser scripts/healthcheck.py /usr/local/bin/healthcheck.py
+COPY --chown=appuser:appuser scripts/db-migration-manager.py /app/scripts/db-migration-manager.py
 COPY --chown=appuser:appuser shared/ /app/shared/
 COPY --chown=appuser:appuser services/auth-service/app/ /app/app/
+# Copy Alembic configuration and migrations
+COPY --chown=appuser:appuser alembic.ini /app/alembic.ini
+COPY --chown=appuser:appuser alembic/ /app/alembic/
 
 # Make health check script executable
 USER root

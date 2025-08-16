@@ -10,7 +10,7 @@ import pytest
 
 # Mark as unit tests despite "integration" in filename - these test individual components in isolation
 pytestmark = pytest.mark.unit
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from shared.ai.chromadb_manager import ChromaDBManager
 
@@ -21,7 +21,7 @@ class TestChromaDBIntegration:
     @pytest.fixture
     def chromadb_manager(self):
         """Create ChromaDB manager instance for testing."""
-        return ChromaDBManager(host="localhost", port=8000)
+        return ChromaDBManager(chromadb_url="http://localhost:8000")
 
     async def test_collection_creation(self, chromadb_manager, mock_chromadb_manager):
         """Test collection creation functionality."""
@@ -86,8 +86,6 @@ class TestChromaDBIntegration:
 
     async def test_multi_tenant_isolation(self, chromadb_manager, mock_chromadb_manager):
         """Test multi-tenant collection isolation."""
-        tenant1_collection = "tenant1-collection"
-        tenant2_collection = "tenant2-collection"
         
         # Mock different responses for different tenants
         async def mock_create_collection(name, tenant_id):

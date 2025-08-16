@@ -1,6 +1,6 @@
 """Authentication and authorization models"""
 
-from pydantic import BaseModel, EmailStr, Field, validator, root_validator
+from pydantic import BaseModel, EmailStr, Field, validator
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from .base import BaseEntity

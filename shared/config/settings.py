@@ -7,7 +7,6 @@ All environment variable names and defaults are now sourced from the centralized
 while maintaining backward compatibility with existing APIs.
 """
 
-import os
 import logging
 from typing import Optional, Dict, Any, List
 try:

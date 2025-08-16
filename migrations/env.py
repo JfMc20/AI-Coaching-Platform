@@ -4,12 +4,12 @@ Handles database migrations with multi-tenant support
 """
 
 import asyncio
-import os
 from logging.config import fileConfig
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
+from shared.models.database import Base
 
 from shared.config.settings import get_database_url_with_validation
 
@@ -23,7 +23,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import all models to ensure they are registered with SQLAlchemy
-from shared.models.database import Base
+
 
 # Set target metadata for autogenerate support
 target_metadata = Base.metadata

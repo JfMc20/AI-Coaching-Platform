@@ -5,11 +5,10 @@ Implements comprehensive tracing for AI Engine, Ollama, and ChromaDB services
 with correlation ID tracking and span instrumentation for performance monitoring.
 """
 
-import os
 import uuid
 import time
 import logging
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, Callable
 from dataclasses import dataclass
 from functools import wraps
 from contextlib import asynccontextmanager

@@ -9,7 +9,7 @@ import json
 import logging
 import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import text
@@ -23,11 +23,10 @@ from shared.models.auth import (
 )
 from ..services.auth_service import AuthService
 from ..services.email_service import get_email_service
-from shared.cache import get_cache_manager, get_redis_client
+from shared.cache import get_cache_manager
 from shared.security.jwt_manager import get_jwt_manager
 from shared.security.rbac import (
-    require_permission, require_role, Permission, Role,
-    rbac_manager, get_roles_from_subscription, require_admin_access
+    require_admin_access
 )
 from shared.security.gdpr_compliance import gdpr_manager, DataDeletionType
 from ..dependencies.auth import (
@@ -73,8 +72,9 @@ def generate_correlation_id() -> str:
 
 def generate_secure_cache_key(password: str, key_prefix: str = "password_strength") -> str:
     """Generate a secure cache key using HMAC-SHA256"""
-    # Use a server-side secret for HMAC (in production, this should come from environment)
-    secret_key = b"auth_service_cache_secret_key_2024"  # TODO: Move to environment variable
+    # Use a server-side secret for HMAC from environment variable
+    import os
+    secret_key = os.getenv("AUTH_CACHE_SECRET_KEY", "fallback_dev_key_2024").encode('utf-8')
     
     # Create HMAC digest of the password
     password_bytes = password.encode('utf-8')
@@ -790,7 +790,7 @@ async def revoke_token(
     correlation_id = generate_correlation_id()
     
     # Get client information
-    client_info = await get_client_info(request)
+    await get_client_info(request)
     
     try:
         # Extract JWT token from Authorization header

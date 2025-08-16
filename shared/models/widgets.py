@@ -1,7 +1,6 @@
 """Widget configuration models"""
 
-from pydantic import BaseModel, Field, validator, HttpUrl
-from datetime import datetime
+from pydantic import BaseModel, Field, validator
 from typing import Optional, List
 from .base import TenantAwareEntity
 

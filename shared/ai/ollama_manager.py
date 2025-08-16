@@ -6,14 +6,12 @@ This module uses centralized environment configuration from shared.config.env_co
 for all environment variable access and default values.
 """
 
-import os
 import logging
 import asyncio
 import aiohttp
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 from dataclasses import dataclass
-from contextlib import asynccontextmanager
 
 from shared.config.settings import get_ai_engine_config
 from shared.config.env_constants import (
@@ -29,17 +27,14 @@ logger = logging.getLogger(__name__)
 
 class OllamaError(BaseServiceException):
     """Ollama specific errors"""
-    pass
 
 
 class OllamaConnectionError(OllamaError):
     """Ollama connection errors"""
-    pass
 
 
 class OllamaModelError(OllamaError):
     """Ollama model management errors"""
-    pass
 
 
 @dataclass

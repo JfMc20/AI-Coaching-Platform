@@ -1,1 +1,0 @@
-# MVP Coaching AI Platform

@@ -5,10 +5,8 @@ Tests security scanning, text extraction, chunking, and embedding generation.
 
 import pytest
 import tempfile
-import os
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch, mock_open
-from datetime import datetime
+from unittest.mock import AsyncMock, Mock, patch
 
 try:
     from services.ai_engine_service.app.document_processor import (
@@ -17,8 +15,8 @@ try:
     )
     from shared.models.documents import ProcessingResult, ProcessingStatus, DocumentChunk
     from shared.exceptions.documents import (
-        DocumentProcessingError, UnsupportedFormatError, FileTooLargeError,
-        MalwareDetectedError, TextExtractionError
+        UnsupportedFormatError, FileTooLargeError, MalwareDetectedError,
+        TextExtractionError
     )
 except ImportError:
     pytest.skip("Document processor components not available", allow_module_level=True)

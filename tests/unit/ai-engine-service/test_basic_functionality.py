@@ -4,13 +4,11 @@ Tests core functionality without external dependencies.
 """
 
 import pytest
-import asyncio
-import json
 from unittest.mock import AsyncMock, Mock, patch
 from datetime import datetime
 
 from shared.models.conversations import Message, MessageRole
-from shared.models.documents import DocumentChunk, ProcessingStatus
+from shared.models.documents import DocumentChunk
 
 
 class TestBasicConnectivity:

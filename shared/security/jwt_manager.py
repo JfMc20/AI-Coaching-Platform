@@ -19,9 +19,8 @@ from jose import JWTError, jwt
 from jose.exceptions import ExpiredSignatureError, JWTClaimsError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, and_
-from sqlalchemy.sql import text
 
-from shared.models.database import JWTBlacklist, RefreshToken, AuditLog
+from shared.models.database import JWTBlacklist, RefreshToken
 from shared.cache import get_cache_manager
 
 logger = logging.getLogger(__name__)

@@ -6,7 +6,6 @@ Fixtures are now centralized in tests/fixtures/creator_hub_fixtures.py and autom
 available through the main conftest.py configuration.
 """
 
-import pytest
 from httpx import AsyncClient
 
 

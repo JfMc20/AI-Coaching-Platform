@@ -9,12 +9,11 @@ from unittest.mock import AsyncMock, Mock, patch
 from datetime import datetime
 
 from shared.models.conversations import Message, MessageRole
-from shared.exceptions.base import BaseServiceException
 
 try:
     from services.ai_engine_service.app.rag_pipeline import (
         RAGPipeline, ConversationManager, RetrievedChunk, AIResponse,
-        RAGError, ConversationError
+        RAGError
     )
 except ImportError:
     pytest.skip("RAG Pipeline components not available", allow_module_level=True)

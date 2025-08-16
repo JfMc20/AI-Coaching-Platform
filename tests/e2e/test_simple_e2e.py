@@ -125,9 +125,7 @@ class TestSimpleE2E:
         try:
             # Test database models
             from shared.models.database import Creator
-            from shared.models.auth import CreatorCreate, CreatorResponse, TokenResponse
-            from shared.models.documents import ProcessingResult, DocumentChunk
-            from shared.models.conversations import Message, Conversation
+            from shared.models.auth import CreatorCreate
             
             # Test that models can be instantiated
             creator_data = {

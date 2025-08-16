@@ -3,12 +3,11 @@ Auth Service - MVP Coaching AI Platform
 Handles authentication, authorization, and user management
 """
 
-import os
 import logging
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -16,8 +15,8 @@ from shared.config.settings import validate_service_environment
 # Import centralized environment constants and helpers
 from shared.config.env_constants import CORS_ORIGINS, JWT_SECRET_KEY, REQUIRED_VARS_BY_SERVICE, get_env_value
 
-from services.auth_service.app.database import get_db_manager, init_database, close_db
-from services.auth_service.app.routes.auth import router as auth_router
+from app.database import get_db_manager, init_database, close_db
+from app.routes.auth import router as auth_router
 
 # Configure logging
 logging.basicConfig(

@@ -5,7 +5,7 @@ Handles asynchronous message processing with multi-tenant support
 
 import json
 import logging
-from typing import Optional, Dict, Any, List, Callable, Awaitable
+from typing import Optional, Dict, Any, Callable, Awaitable
 from datetime import datetime
 import asyncio
 import uuid

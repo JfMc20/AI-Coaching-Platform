@@ -6,10 +6,10 @@ Fixtures are now centralized in tests/fixtures/ai_fixtures.py and automatically
 available through the main conftest.py configuration.
 """
 
-import pytest
 import asyncio
 import time
 from httpx import AsyncClient
+from unittest.mock import patch
 
 
 class TestAIEndpoints:

@@ -63,7 +63,7 @@ services:
       - "${POSTGRES_PORT:-5432}:5432" 
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      - ./scripts/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
@@ -146,8 +146,8 @@ services:
 
   creator-hub-service:
     build:
-      context: ./services/creator-hub-service 
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/creator-hub-service/Dockerfile
     container_name: mvp-creator-hub-service
     ports:
       - "${CREATOR_HUB_PORT:-8002}:8002" 
@@ -169,8 +169,8 @@ services:
 
   ai-engine-service:
     build:
-      context: ./services/ai-engine-service 
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/ai-engine-service/Dockerfile
     container_name: mvp-ai-engine-service
     ports:
       - "${AI_ENGINE_PORT:-8003}:8003"
@@ -192,8 +192,8 @@ services:
 
   channel-service:
     build:
-      context: ./services/channel-service 
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./services/channel-service/Dockerfile
     container_name: mvp-channel-service
     ports:
       - "${CHANNEL_SERVICE_PORT:-8004}:8004" 

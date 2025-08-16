@@ -6,7 +6,7 @@ their default values per environment, and helper functions for retrieval and val
 """
 
 import os
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 
 # ============================================================================
@@ -114,6 +114,12 @@ VAULT_TOKEN = "VAULT_TOKEN"
 VAULT_MOUNT_POINT = "VAULT_MOUNT_POINT"
 VAULT_ENABLED = "VAULT_ENABLED"
 
+# Monitoring Configuration
+MONITORING_SAMPLING_RATE = "MONITORING_SAMPLING_RATE"
+MONITORING_RETENTION_DAYS = "MONITORING_RETENTION_DAYS"
+ENABLE_PII_DETECTION = "ENABLE_PII_DETECTION"
+HEALTH_CHECK_INTERVAL_MINUTES = "HEALTH_CHECK_INTERVAL_MINUTES"
+
 # Health Check Configuration
 PORT = "PORT"
 HEALTH_CHECK_HOST = "HEALTH_CHECK_HOST"
@@ -163,7 +169,7 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         CHROMA_SERVER_HTTP_PORT: "8000",
         EMBEDDING_MODEL: "nomic-embed-text",
         CHAT_MODEL: "llama3.2",
-        CHROMA_SHARD_COUNT: "1",
+        CHROMA_SHARD_COUNT: "5",
         CHROMA_MAX_CONNECTIONS_PER_INSTANCE: "10",
         DEFAULT_CHUNK_SIZE: "1000",
         DEFAULT_CHUNK_OVERLAP: "200",
@@ -238,6 +244,12 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         TEST_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/ai_platform_test",
         DB_AUTO_CREATE: "true",
         
+        # Monitoring
+        MONITORING_SAMPLING_RATE: "0.01",
+        MONITORING_RETENTION_DAYS: "30",
+        ENABLE_PII_DETECTION: "true",
+        HEALTH_CHECK_INTERVAL_MINUTES: "5",
+        
         # Infrastructure
         NGINX_WORKER_PROCESSES: "auto",
         NGINX_WORKER_CONNECTIONS: "1024",
@@ -271,7 +283,7 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         CHROMA_SERVER_HTTP_PORT: "8000",
         EMBEDDING_MODEL: "nomic-embed-text",
         CHAT_MODEL: "llama3.2",
-        CHROMA_SHARD_COUNT: "1",
+        CHROMA_SHARD_COUNT: "5",
         CHROMA_MAX_CONNECTIONS_PER_INSTANCE: "5",
         DEFAULT_CHUNK_SIZE: "500",
         DEFAULT_CHUNK_OVERLAP: "100",
@@ -346,6 +358,12 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         TEST_DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/ai_platform_test",
         DB_AUTO_CREATE: "true",
         
+        # Monitoring
+        MONITORING_SAMPLING_RATE: "0.1",
+        MONITORING_RETENTION_DAYS: "7",
+        ENABLE_PII_DETECTION: "false",
+        HEALTH_CHECK_INTERVAL_MINUTES: "2",
+        
         # Infrastructure
         NGINX_WORKER_PROCESSES: "auto",
         NGINX_WORKER_CONNECTIONS: "1024",
@@ -388,7 +406,7 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         CHROMA_SERVER_HTTP_PORT: "8000",
         EMBEDDING_MODEL: "nomic-embed-text",
         CHAT_MODEL: "llama3.2",
-        CHROMA_SHARD_COUNT: "3",
+        CHROMA_SHARD_COUNT: "5",
         CHROMA_MAX_CONNECTIONS_PER_INSTANCE: "20",
         DEFAULT_CHUNK_SIZE: "1000",
         DEFAULT_CHUNK_OVERLAP: "200",
@@ -462,6 +480,12 @@ ENVIRONMENT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         TEST_REDIS_URL: "",
         TEST_DATABASE_URL: "",
         DB_AUTO_CREATE: "false",
+        
+        # Monitoring
+        MONITORING_SAMPLING_RATE: "0.01",
+        MONITORING_RETENTION_DAYS: "90",
+        ENABLE_PII_DETECTION: "true",
+        HEALTH_CHECK_INTERVAL_MINUTES: "10",
         
         # Infrastructure
         NGINX_WORKER_PROCESSES: "auto",
@@ -615,6 +639,8 @@ ALL_ENV_VARS: Tuple[str, ...] = (
     PORT, HEALTH_CHECK_HOST, HEALTH_CHECK_PATH,
     # Vault
     VAULT_URL, VAULT_TOKEN, VAULT_MOUNT_POINT, VAULT_ENABLED,
+    # Monitoring
+    MONITORING_SAMPLING_RATE, MONITORING_RETENTION_DAYS, ENABLE_PII_DETECTION, HEALTH_CHECK_INTERVAL_MINUTES,
     # Testing
     TEST_REDIS_URL, TEST_DATABASE_URL, DB_AUTO_CREATE,
     # Infrastructure
@@ -706,6 +732,9 @@ CATEGORY_VARS: Dict[str, List[str]] = {
     ],
     "testing": [
         TEST_REDIS_URL, TEST_DATABASE_URL, DB_AUTO_CREATE,
+    ],
+    "monitoring": [
+        MONITORING_SAMPLING_RATE, MONITORING_RETENTION_DAYS, ENABLE_PII_DETECTION, HEALTH_CHECK_INTERVAL_MINUTES,
     ],
     "infrastructure": [
         NGINX_WORKER_PROCESSES, NGINX_WORKER_CONNECTIONS, VAULT_DEV_LISTEN_ADDRESS,

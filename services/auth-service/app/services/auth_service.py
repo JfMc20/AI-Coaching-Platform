@@ -13,15 +13,12 @@ import hashlib
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Tuple
-import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_, or_
-from sqlalchemy.sql import text
+from sqlalchemy import select, update, and_
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
-from jose.exceptions import ExpiredSignatureError, JWTClaimsError
 
 from shared.config.env_constants import (
     JWT_SECRET_KEY, JWT_ALGORITHM, JWT_ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -29,7 +26,7 @@ from shared.config.env_constants import (
     ACCOUNT_LOCKOUT_DURATION_MINUTES, PASSWORD_RESET_TOKEN_EXPIRE_MINUTES,
     get_env_value
 )
-from shared.models.database import Creator, RefreshToken, UserSession, PasswordResetToken, JWTBlacklist, AuditLog
+from shared.models.database import Creator, RefreshToken, PasswordResetToken, AuditLog
 from shared.models.auth import (
     CreatorCreate, CreatorResponse, TokenResponse, LoginRequest,
     PasswordResetRequest, PasswordResetConfirm, TokenRefreshRequest,
@@ -966,7 +963,7 @@ class AuthService:
         """
         try:
             from shared.cache.session_store import get_session_store
-            session_store = get_session_store()
+            get_session_store()
             
             # Get all sessions for the creator and end them
             # Note: This is a simplified implementation

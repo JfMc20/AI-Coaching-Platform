@@ -3,14 +3,12 @@ Channel Service - MVP Coaching AI Platform
 Handles real-time communication, WebSocket connections, and messaging
 """
 
-import os
 import logging
 from contextlib import asynccontextmanager
-from typing import Dict, List
+from typing import Dict
 
-from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, status, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from shared.config.settings import validate_service_environment
 # Centralized environment constants and configuration management

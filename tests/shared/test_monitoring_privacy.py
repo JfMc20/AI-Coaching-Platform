@@ -10,8 +10,7 @@ Tests privacy monitoring components including:
 """
 
 import pytest
-import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from shared.monitoring.privacy import (
     PrivacyPreservingMonitor,
@@ -19,8 +18,7 @@ from shared.monitoring.privacy import (
     InputSanitizer,
     DataSampler,
     SampledData,
-    ContentType,
-    SamplingLevel
+    ContentType
 )
 
 

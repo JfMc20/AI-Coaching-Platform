@@ -7,7 +7,7 @@ for ML services with configurable thresholds and escalation policies.
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, List, Callable, Union
+from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime, timedelta
@@ -15,7 +15,6 @@ from datetime import datetime, timedelta
 import httpx
 from shared.config.env_constants import get_env_value
 from .metrics import get_metrics_collector, OperationType
-from .health_checks import HealthStatus, HealthCheckResult
 
 logger = logging.getLogger(__name__)
 

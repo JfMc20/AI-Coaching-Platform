@@ -1,0 +1,578 @@
+{
+  "info": {
+    "name": "AI Engine Service",
+    "description": "API collection for AI Engine Service - RAG pipeline, document processing, and conversation management",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8003",
+      "type": "string"
+    },
+    {
+      "key": "creator_id",
+      "value": "{{creator_id}}",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        },
+        "description": "Check AI Engine service health and dependencies"
+      },
+      "response": []
+    },
+    {
+      "name": "Ready Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/ready",
+          "host": ["{{base_url}}"],
+          "path": ["ready"]
+        },
+        "description": "Check if AI Engine service is ready to handle requests"
+      },
+      "response": []
+    },
+    {
+      "name": "Document Processing",
+      "item": [
+        {
+          "name": "Upload Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "metadata",
+                  "value": "{\"source\": \"test_upload\", \"category\": \"knowledge_base\"}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/documents/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "documents", "upload"]
+            },
+            "description": "Upload and process document for knowledge base (PDF, DOCX, TXT supported)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Processing Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/documents/{{document_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "documents", "{{document_id}}", "status"]
+            },
+            "description": "Get document processing status and progress"
+          },
+          "response": []
+        },
+        {
+          "name": "List Documents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/documents?page=1&per_page=20&status=completed",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "documents"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "completed"
+                }
+              ]
+            },
+            "description": "List processed documents with pagination and filtering"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Document",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/documents/{{document_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "documents", "{{document_id}}"]
+            },
+            "description": "Delete document and all associated chunks from knowledge base"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "RAG Pipeline",
+      "item": [
+        {
+          "name": "Process Query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"What are the key principles of effective coaching?\",\n  \"conversation_id\": \"conv_123\",\n  \"context_window\": 4000,\n  \"max_chunks\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/query",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "query"]
+            },
+            "description": "Process user query through RAG pipeline with knowledge retrieval"
+          },
+          "response": []
+        },
+        {
+          "name": "Search Knowledge",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"coaching techniques\",\n  \"limit\": 10,\n  \"similarity_threshold\": 0.7\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/search",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "search"]
+            },
+            "description": "Search knowledge base for relevant content chunks"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Conversation Management",
+      "item": [
+        {
+          "name": "Create Conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_session_id\": \"session_123\",\n  \"channel\": \"widget\",\n  \"context\": {\n    \"user_name\": \"John Doe\",\n    \"program_id\": \"prog_456\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/conversations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "conversations"]
+            },
+            "description": "Create new conversation for user session"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Conversation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/conversations/{{conversation_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "conversations", "{{conversation_id}}"]
+            },
+            "description": "Get conversation details and recent messages"
+          },
+          "response": []
+        },
+        {
+          "name": "List Conversations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/conversations?page=1&per_page=20&status=active",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "conversations"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "active"
+                }
+              ]
+            },
+            "description": "List conversations with pagination and filtering"
+          },
+          "response": []
+        },
+        {
+          "name": "Add Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Hello, I need help with my coaching program\",\n  \"sender_type\": \"user\",\n  \"metadata\": {\n    \"channel\": \"widget\",\n    \"timestamp\": \"2024-01-01T12:00:00Z\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/conversations/{{conversation_id}}/messages",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "conversations", "{{conversation_id}}", "messages"]
+            },
+            "description": "Add message to conversation"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Knowledge Base Management",
+      "item": [
+        {
+          "name": "Get Knowledge Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/knowledge/stats",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "knowledge", "stats"]
+            },
+            "description": "Get knowledge base statistics and metrics"
+          },
+          "response": []
+        },
+        {
+          "name": "Rebuild Knowledge Index",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/knowledge/rebuild",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "knowledge", "rebuild"]
+            },
+            "description": "Rebuild knowledge base index (admin operation)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Model Management",
+      "item": [
+        {
+          "name": "List Available Models",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/models",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "models"]
+            },
+            "description": "List available AI models and their status"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Model Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/models/{{model_name}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "models", "{{model_name}}", "status"]
+            },
+            "description": "Get specific model status and health"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Analytics & Metrics",
+      "item": [
+        {
+          "name": "Get AI Performance Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/metrics?days=7",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "metrics"],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "7"
+                }
+              ]
+            },
+            "description": "Get AI performance metrics and statistics"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Usage Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/ai/analytics?period=week",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "ai", "analytics"],
+              "query": [
+                {
+                  "key": "period",
+                  "value": "week"
+                }
+              ]
+            },
+            "description": "Get AI usage analytics and trends"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-set creator_id from JWT token if available",
+          "if (pm.globals.get('jwt_token')) {",
+          "    try {",
+          "        const token = pm.globals.get('jwt_token');",
+          "        const payload = JSON.parse(atob(token.split('.')[1]));",
+          "        pm.globals.set('creator_id', payload.creator_id);",
+          "    } catch (e) {",
+          "        console.log('Could not parse JWT token');",
+          "    }",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Common test assertions",
+          "pm.test('Status code is successful', function () {",
+          "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+          "});",
+          "",
+          "pm.test('Response time is acceptable', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+          "});",
+          "",
+          "pm.test('Response has correct content type', function () {",
+          "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+          "});",
+          "",
+          "// Store response data for chaining requests",
+          "if (pm.response.code === 200 || pm.response.code === 201) {",
+          "    const responseJson = pm.response.json();",
+          "    ",
+          "    if (responseJson.data && responseJson.data.id) {",
+          "        pm.globals.set('last_created_id', responseJson.data.id);",
+          "    }",
+          "    ",
+          "    if (responseJson.data && responseJson.data.document_id) {",
+          "        pm.globals.set('document_id', responseJson.data.document_id);",
+          "    }",
+          "    ",
+          "    if (responseJson.data && responseJson.data.conversation_id) {",
+          "        pm.globals.set('conversation_id', responseJson.data.conversation_id);",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ]
+}

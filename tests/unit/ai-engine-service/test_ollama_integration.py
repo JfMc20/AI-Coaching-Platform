@@ -10,8 +10,7 @@ import pytest
 
 # Mark as unit tests despite "integration" in filename - these test individual components in isolation
 pytestmark = pytest.mark.unit
-import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from shared.ai.ollama_manager import OllamaManager
 
@@ -22,7 +21,7 @@ class TestOllamaIntegration:
     @pytest.fixture
     def ollama_manager(self):
         """Create Ollama manager instance for testing."""
-        return OllamaManager(base_url="http://localhost:11434")
+        return OllamaManager(ollama_url="http://localhost:11434")
 
     async def test_embedding_generation(self, ollama_manager, mock_ollama_manager):
         """Test embedding generation functionality."""

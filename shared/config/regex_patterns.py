@@ -6,7 +6,7 @@ hardcoded values, dead code, and migration candidates throughout the codebase.
 """
 
 import re
-from typing import Pattern, Dict, List, Optional, Tuple
+from typing import Pattern, Dict, List, Tuple
 
 
 # ============================================================================
@@ -273,28 +273,28 @@ USAGE EXAMPLES:
 1. Finding all environment variable usage:
    ```bash
    # Using grep with the patterns
-   grep -r -E 'os\\.getenv\\s*\\(\\s*["\'][^"\']+["\']\\s*(?:,\\s*[^)]+)?\\s*\\)' .
+   grep -r -E 'os\\\\.getenv\\\\s*\\\\(\\\\s*["\'][^"\']+["\']\\\\s*(?:,\\\\s*[^)]+)?\\\\s*\\\\)' .
    
    # Finding all Field(env=...) definitions
-   grep -r -E 'Field\\s*\\([^)]*\\benv\\s*=\\s*["\'][^"\']+["\'][^)]*\\)' .
+   grep -r -E 'Field\\\\s*\\\\([^)]*\\\\benv\\\\s*=\\\\s*["\'][^"\']+["\'][^)]*\\\\)' .
    ```
 
 2. Identifying hardcoded values:
    ```bash
    # Find localhost URLs
-   grep -r -E 'https?://(?:localhost|127\.0\.0\.1)(?::\d+)?(?:/[^\s"\']*)?' .
+   grep -r -E 'https?://(?:localhost|127\\.0\\.0\\.1)(?::\\d+)?(?:/[^\\s"\']*)?' .
    
    # Find hardcoded database URLs
-   grep -r -E '(?:postgresql|postgres|mysql|mongodb)://[^\s"\']+' .
+   grep -r -E '(?:postgresql|postgres|mysql|mongodb)://[^\\s"\']+' .
    ```
 
 3. Detecting dead code:
    ```bash
    # Find TODO/FIXME comments
-   grep -r -E '#\s*(?:TODO|FIXME|HACK|XXX)\s*:?\s*[^\n]*' .
+   grep -r -E '#\\s*(?:TODO|FIXME|HACK|XXX)\\s*:?\\s*[^\\n]*' .
    
    # Find if False blocks
-   grep -r -E '^\s*if\s+(?:False|0|None)\s*:' .
+   grep -r -E '^\\s*if\\s+(?:False|0|None)\\s*:' .
    ```
 
 4. Using in Python code:

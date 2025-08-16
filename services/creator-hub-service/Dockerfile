@@ -18,22 +18,9 @@ RUN apt-get update && apt-get install -y \
 # Upgrade pip and install build tools
 RUN pip install --upgrade pip setuptools wheel
 
-# Create requirements.txt with exact versions
+# Use centralized requirements.txt (generated from pyproject.toml)
 WORKDIR /build
-RUN echo "fastapi==0.104.0" > requirements.txt && \
-    echo "uvicorn[standard]==0.24.0" >> requirements.txt && \
-    echo "sqlalchemy==2.0.23" >> requirements.txt && \
-    echo "alembic==1.12.1" >> requirements.txt && \
-    echo "asyncpg==0.29.0" >> requirements.txt && \
-    echo "redis==5.0.1" >> requirements.txt && \
-    echo "python-multipart==0.0.6" >> requirements.txt && \
-    echo "aiofiles==23.2.0" >> requirements.txt && \
-    echo "python-magic==0.4.27" >> requirements.txt && \
-    echo "PyPDF2==3.0.1" >> requirements.txt && \
-    echo "python-docx==1.1.0" >> requirements.txt && \
-    echo "pydantic[email]==2.5.0" >> requirements.txt && \
-    echo "httpx==0.25.0" >> requirements.txt && \
-    echo "python-dotenv==1.0.0" >> requirements.txt
+COPY services/creator-hub-service/requirements.txt .
 
 # Pre-download and build wheels
 RUN pip wheel --wheel-dir /build/wheels -r requirements.txt

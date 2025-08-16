@@ -4,17 +4,16 @@ Implements Retrieval-Augmented Generation with conversation context management
 """
 
 import logging
-import asyncio
-import hashlib
-import json
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
+import uuid
+from typing import List, Dict, Any, Optional
+from datetime import datetime
 from dataclasses import dataclass
+from collections import deque
+from functools import lru_cache
 
-from shared.ai.chromadb_manager import get_chromadb_manager, ChromaDBError
-from shared.ai.ollama_manager import get_ollama_manager, OllamaError
-from shared.models.conversations import Message, MessageRole, ConversationContext
-from shared.models.documents import DocumentChunk
+from shared.ai.chromadb_manager import get_chromadb_manager
+from shared.ai.ollama_manager import get_ollama_manager
+from shared.models.conversations import Message, MessageRole
 from shared.exceptions.base import BaseServiceException
 from shared.monitoring import (
     trace_ml_operation, get_metrics_collector, create_correlation_id,
@@ -27,14 +26,66 @@ from .embedding_manager import get_embedding_manager, EmbeddingError
 logger = logging.getLogger(__name__)
 
 
+# Centralized serialization helpers for consistent message handling
+def serialize_message(message: Message) -> Dict[str, Any]:
+    """
+    Serialize a Message object to a dictionary with proper datetime handling
+    
+    Args:
+        message: Message object to serialize
+        
+    Returns:
+        Dictionary with ISO string datetime fields
+    """
+    message_dict = message.model_dump()
+    
+    # Convert datetime fields to ISO strings
+    if message_dict.get('created_at'):
+        message_dict['created_at'] = message.created_at.isoformat()
+    if message_dict.get('updated_at'):
+        message_dict['updated_at'] = message.updated_at.isoformat()
+    
+    return message_dict
+
+
+def deserialize_message(message_data: Dict[str, Any]) -> Message:
+    """
+    Deserialize a dictionary to a Message object with proper datetime parsing
+    
+    Args:
+        message_data: Dictionary with message data
+        
+    Returns:
+        Message object with parsed datetime fields
+        
+    Raises:
+        ValueError: If message data is invalid
+    """
+    # Parse datetime fields from ISO strings
+    if isinstance(message_data.get('created_at'), str):
+        message_data['created_at'] = datetime.fromisoformat(message_data['created_at'].replace('Z', '+00:00'))
+    if isinstance(message_data.get('updated_at'), str):
+        message_data['updated_at'] = datetime.fromisoformat(message_data['updated_at'].replace('Z', '+00:00'))
+    
+    return Message(**message_data)
+
+
+def generate_message_id() -> str:
+    """
+    Generate a unique message ID using UUID to avoid collisions
+    
+    Returns:
+        Unique message ID string
+    """
+    return f"msg_{uuid.uuid4().hex}"
+
+
 class RAGError(BaseServiceException):
     """RAG pipeline specific errors"""
-    pass
 
 
 class ConversationError(BaseServiceException):
     """Conversation management errors"""
-    pass
 
 
 @dataclass
@@ -79,10 +130,17 @@ class ConversationManager:
         self.max_context_messages = max_context_messages
         self.context_ttl = 3600 * 24  # 24 hours
         
-        # In-memory fallback if Redis is not available
-        self._memory_cache: Dict[str, List[Message]] = {}
+        # In-memory fallback with bounded LRU cache (max 1000 conversations)
+        self._memory_cache = lru_cache(maxsize=1000)(self._get_conversation_from_memory)
+        
+        # Internal storage for LRU cache
+        self._conversation_storage: Dict[str, List[Message]] = {}
         
         logger.info(f"ConversationManager initialized with max_context_messages={max_context_messages}")
+    
+    def _get_conversation_from_memory(self, conversation_id: str) -> List[Message]:
+        """Helper method for LRU cache to get conversation from memory"""
+        return self._conversation_storage.get(conversation_id, [])
     
     async def get_context(
         self, 
@@ -110,29 +168,25 @@ class ConversationManager:
                 messages = []
                 for msg_data in cached_messages[-max_messages:]:
                     try:
-                        if isinstance(msg_data, dict):
-                            message = Message(**msg_data)
-                        else:
-                            # Handle string data (legacy format)
-                            msg_dict = json.loads(msg_data) if isinstance(msg_data, str) else msg_data
-                            message = Message(**msg_dict)
+                        # Use centralized deserialization
+                        message = deserialize_message(msg_data)
                         messages.append(message)
-                    except (json.JSONDecodeError, ValueError, TypeError) as e:
-                        logger.warning(f"Failed to parse message data: {e}")
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Failed to deserialize message data: {e}")
                         continue
                 
                 return messages
             else:
-                # Fallback to memory cache
-                messages = self._memory_cache.get(conversation_id, [])
-                return messages[-max_messages:] if messages else []
+                # Fallback to bounded memory cache
+                cached_messages = self._memory_cache(conversation_id)
+                return cached_messages[-max_messages:] if cached_messages else []
                 
         except Exception as e:
             logger.error(f"Failed to get conversation context: {e}")
             # Return empty context on error
             return []
     
-    @trace_ml_operation(operation_type=OperationType.CONVERSATION)
+    @trace_ml_operation("conversation_add_exchange", operation_type=OperationType.CONVERSATION)
     async def add_exchange(
         self,
         conversation_id: str,
@@ -173,9 +227,9 @@ class ConversationManager:
             )
             metrics_collector.record_ml_operation_start(conv_metrics)
             
-            # Create user message
+            # Create user message with UUID
             user_msg = Message(
-                id=f"msg_{int(timestamp.timestamp() * 1000)}",
+                id=generate_message_id(),
                 creator_id=creator_id,
                 conversation_id=conversation_id,
                 role=MessageRole.USER,
@@ -184,9 +238,9 @@ class ConversationManager:
                 metadata={}
             )
             
-            # Create AI message
+            # Create AI message with UUID
             ai_msg = Message(
-                id=f"msg_{int(timestamp.timestamp() * 1000) + 1}",
+                id=generate_message_id(),
                 creator_id=creator_id,
                 conversation_id=conversation_id,
                 role=MessageRole.ASSISTANT,
@@ -212,8 +266,8 @@ class ConversationManager:
             cache_key = f"conversation:{conversation_id}:messages"
             current_messages = await self.cache_manager.redis.get(creator_id, cache_key) or []
             
-            # Add new messages
-            new_messages = current_messages + [user_msg.dict(), ai_msg.dict()]
+            # Add new messages using centralized serialization
+            new_messages = current_messages + [serialize_message(user_msg), serialize_message(ai_msg)]
             
             # Trim to max context size
             if len(new_messages) > self.max_context_messages:
@@ -227,15 +281,18 @@ class ConversationManager:
                 self.context_ttl
             )
             
-            # Also update memory cache as fallback
-            if conversation_id not in self._memory_cache:
-                self._memory_cache[conversation_id] = []
+            # Also update bounded memory cache as fallback
+            if conversation_id not in self._conversation_storage:
+                self._conversation_storage[conversation_id] = []
             
-            self._memory_cache[conversation_id].extend([user_msg, ai_msg])
+            self._conversation_storage[conversation_id].extend([user_msg, ai_msg])
             
-            # Trim memory cache
-            if len(self._memory_cache[conversation_id]) > self.max_context_messages:
-                self._memory_cache[conversation_id] = self._memory_cache[conversation_id][-self.max_context_messages:]
+            # Trim memory cache to max context size
+            if len(self._conversation_storage[conversation_id]) > self.max_context_messages:
+                self._conversation_storage[conversation_id] = self._conversation_storage[conversation_id][-self.max_context_messages:]
+            
+            # Clear LRU cache for this conversation to force refresh
+            self._memory_cache.cache_clear()
             
             # Record successful conversation update
             operation_time = (datetime.utcnow() - start_time).total_seconds() * 1000
@@ -346,8 +403,8 @@ class RAGPipeline:
         self.max_retrieved_chunks = max_retrieved_chunks
         self.similarity_threshold = similarity_threshold
         
-        # Performance tracking
-        self._processing_times: List[float] = []
+        # Performance tracking with bounded deque (max 1000 entries)
+        self._processing_times: deque = deque(maxlen=1000)
         
         logger.info(
             f"RAG Pipeline initialized - "
@@ -356,7 +413,7 @@ class RAGPipeline:
             f"similarity_threshold: {similarity_threshold}"
         )
     
-    @trace_ml_operation(operation_type=OperationType.CHAT)
+    @trace_ml_operation("rag_process_query", operation_type=OperationType.CHAT)
     async def process_query(
         self, 
         query: str, 
@@ -477,7 +534,7 @@ class RAGPipeline:
             logger.error(error_msg)
             raise RAGError(error_msg) from e
     
-    @trace_ml_operation(operation_type=OperationType.SEARCH)
+    @trace_ml_operation("rag_retrieve_knowledge", operation_type=OperationType.SEARCH)
     async def retrieve_knowledge(
         self, 
         query: str, 
@@ -762,7 +819,8 @@ class RAGPipeline:
                     "avg_processing_time_ms": 0,
                     "min_processing_time_ms": 0,
                     "max_processing_time_ms": 0,
-                    "p95_processing_time_ms": 0
+                    "p95_processing_time_ms": 0,
+                    "recent_queries": 0
                 }
             
             processing_times = sorted(self._processing_times)
@@ -774,10 +832,7 @@ class RAGPipeline:
                 "min_processing_time_ms": min(processing_times),
                 "max_processing_time_ms": max(processing_times),
                 "p95_processing_time_ms": processing_times[int(total_queries * 0.95)] if total_queries > 0 else 0,
-                "last_24h_queries": len([
-                    t for t in self._processing_times 
-                    if t > (datetime.utcnow() - timedelta(hours=24)).timestamp() * 1000
-                ])
+                "recent_queries": total_queries  # All queries in bounded deque are recent
             }
             
         except Exception as e:

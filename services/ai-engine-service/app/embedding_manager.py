@@ -8,10 +8,9 @@ import asyncio
 import hashlib
 import json
 import unicodedata
-from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
+from datetime import datetime, timezone
 from dataclasses import dataclass
-from enum import Enum
 
 from shared.ai.chromadb_manager import get_chromadb_manager, ChromaDBError
 from shared.ai.ollama_manager import get_ollama_manager, OllamaError
@@ -23,12 +22,10 @@ logger = logging.getLogger(__name__)
 
 class EmbeddingError(BaseServiceException):
     """Embedding management specific errors"""
-    pass
 
 
 class SearchCacheError(BaseServiceException):
     """Search cache specific errors"""
-    pass
 
 
 @dataclass
@@ -229,7 +226,7 @@ class SearchCache:
             cached_result = CachedSearchResult(
                 results=results,
                 query=query,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 model_version=model_version,
                 filters=filters,
                 hit_count=0
@@ -407,17 +404,26 @@ class SearchCache:
             
             popular_queries = []
             for key in query_keys:
-                count = await self.cache_manager.redis.get(creator_id, key)
-                if count and int(count) >= self.popular_queries_threshold:
-                    # Get query text
-                    text_key = f"popular_query_text:{key}"
-                    query_text = await self.cache_manager.redis.get(creator_id, text_key)
-                    
-                    if query_text:
-                        popular_queries.append({
-                            'query': query_text,
-                            'count': int(count)
-                        })
+                count_raw = await self.cache_manager.redis.get(creator_id, key)
+                if count_raw is not None:
+                    try:
+                        # Handle bytes or string conversion safely
+                        if isinstance(count_raw, bytes):
+                            count_raw = count_raw.decode('utf-8')
+                        count = int(count_raw)
+                        if count >= self.popular_queries_threshold:
+                            # Get query text
+                            text_key = f"popular_query_text:{key}"
+                            query_text = await self.cache_manager.redis.get(creator_id, text_key)
+                            
+                            if query_text:
+                                popular_queries.append({
+                                    'query': query_text,
+                                    'count': count
+                                })
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Invalid count value for key {key}: {count_raw}, error: {e}")
+                        continue
             
             # Sort by popularity
             popular_queries.sort(key=lambda x: x['count'], reverse=True)
@@ -686,14 +692,16 @@ class EmbeddingManager:
                     "collection_name": chromadb_stats.collection_name,
                     "total_embeddings": chromadb_stats.total_embeddings,
                     "document_count": chromadb_stats.document_count,
-                    "last_updated": chromadb_stats.last_updated.isoformat()
+                    "last_updated": (chromadb_stats.last_updated.replace(tzinfo=timezone.utc) 
+                                   if chromadb_stats.last_updated.tzinfo is None 
+                                   else chromadb_stats.last_updated).isoformat()
                 },
                 "cache_stats": {
                     "total_cache_keys": len(cache_keys),
                     "embedding_cache_keys": len(embedding_cache_keys),
                     "search_cache_keys": len(search_cache_keys)
                 },
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
         except Exception as e:
@@ -779,6 +787,18 @@ class EmbeddingManager:
             logger.exception(f"Cache warming failed: {e}")
             return []
     
+    async def warm_popular_queries(self, creator_id: str) -> int:
+        """
+        Warm cache for popular queries (wrapper method for encapsulation)
+        
+        Args:
+            creator_id: Creator identifier
+            
+        Returns:
+            Number of queries warmed
+        """
+        return await self.search_cache.warm_popular_queries(creator_id)
+    
     async def enable_embedding_compression(self, creator_id: str, compression_type: str = "float16") -> bool:
         """
         Enable embedding compression for storage efficiency
@@ -799,7 +819,7 @@ class EmbeddingManager:
             compression_config = {
                 "type": compression_type,
                 "enabled": True,
-                "enabled_at": datetime.utcnow().isoformat(),
+                "enabled_at": datetime.now(timezone.utc).isoformat(),
                 "expected_reduction": 0.5 if compression_type == "float16" else 0.75
             }
             
@@ -825,7 +845,7 @@ class EmbeddingManager:
         """
         try:
             # Get current connection stats
-            chromadb_manager = get_chromadb_manager()
+            get_chromadb_manager()
             
             # Mock connection pool optimization
             # In production, this would configure actual connection pools

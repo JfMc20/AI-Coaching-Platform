@@ -4,16 +4,14 @@ Monitoring endpoints for AI Engine Service
 Provides endpoints for metrics, health checks, and observability data.
 """
 
-import time
-from typing import Dict, Any, Optional
+from typing import Optional
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 
 from shared.monitoring import (
-    get_metrics_collector, get_health_checker, get_alert_manager,
-    HealthStatus, AlertSeverity
+    get_metrics_collector, get_health_checker, get_alert_manager, AlertSeverity
 )
 
 router = APIRouter(prefix="/monitoring", tags=["monitoring"])

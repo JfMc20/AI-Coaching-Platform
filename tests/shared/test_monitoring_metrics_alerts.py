@@ -9,18 +9,14 @@ Tests metrics collection, SLA monitoring, and alerting system:
 """
 
 import pytest
-import time
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch
 
 from shared.monitoring.metrics import (
-    MetricsCollector, MLMetrics, OperationType, ErrorType,
-    get_metrics_collector
+    MetricsCollector, MLMetrics, OperationType, get_metrics_collector
 )
 from shared.monitoring.alerting import (
     AlertManager, SLAMonitor, Alert, AlertRule, AlertSeverity,
-    AlertType, AlertStatus, SLATarget, IncidentResponse,
-    get_alert_manager
+    AlertType, AlertStatus, SLATarget, IncidentResponse
 )
 from shared.monitoring.health_checks import (
     ModelHealthChecker, HealthStatus, HealthCheckResult, CheckType

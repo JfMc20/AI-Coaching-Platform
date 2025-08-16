@@ -9,7 +9,7 @@ import time
 import socket
 import logging
 import argparse
-from typing import List, Tuple
+from typing import Tuple
 
 # Configure logging
 logging.basicConfig(
