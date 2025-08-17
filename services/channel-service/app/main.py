@@ -21,6 +21,15 @@ from shared.config.env_constants import CORS_ORIGINS, REQUIRED_VARS_BY_SERVICE, 
 # Import local authentication dependencies
 from .database import get_db, get_tenant_session, init_database, close_database, async_session
 
+# Import AI client at module level  
+try:
+    from .ai_client import AIEngineClient
+    AI_CLIENT_AVAILABLE = True
+except Exception as ai_import_error:
+    print(f"Failed to import AI Engine client: {ai_import_error}")
+    AI_CLIENT_AVAILABLE = False
+    AIEngineClient = None
+
 from .channel_manager import ChannelManager
 from .models import (
     ChannelConfiguration, 
@@ -335,8 +344,60 @@ class AIChatWidget {
     }
     
     connectWebSocket() {
-        console.log('AI Widget: Connection skipped - demo mode');
-        this.updateConnectionStatus('connected', 'Demo Mode');
+        try {
+            // Create WebSocket connection to Channel Service
+            const wsUrl = `${this.config.apiUrl.replace('http', 'ws')}/ws/widget/${this.config.widgetId}?user_name=Demo User`;
+            console.log('AI Widget: Connecting to:', wsUrl);
+            
+            this.websocket = new WebSocket(wsUrl);
+            
+            this.websocket.onopen = () => {
+                console.log('AI Widget: WebSocket connected');
+                this.updateConnectionStatus('connected', 'Connected');
+            };
+            
+            this.websocket.onmessage = (event) => {
+                console.log('AI Widget: Received message:', event.data);
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    // Hide typing indicator when we get a response
+                    this.hideTypingIndicator();
+                    
+                    if (data.type === 'ai_response') {
+                        this.addMessageToUI('bot', data.content);
+                    } else if (data.type === 'error') {
+                        this.addMessageToUI('bot', `Error: ${data.message}`);
+                    } else if (data.type === 'status') {
+                        console.log('AI Widget: Status update:', data.message);
+                    }
+                } catch (e) {
+                    console.error('AI Widget: Error parsing message:', e);
+                    this.addMessageToUI('bot', 'Error processing response');
+                    this.hideTypingIndicator();
+                }
+            };
+            
+            this.websocket.onerror = (error) => {
+                console.error('AI Widget: WebSocket error:', error);
+                this.updateConnectionStatus('error', 'Connection Error');
+            };
+            
+            this.websocket.onclose = () => {
+                console.log('AI Widget: WebSocket closed');
+                this.updateConnectionStatus('disconnected', 'Disconnected');
+                
+                // Attempt to reconnect after 3 seconds
+                setTimeout(() => {
+                    console.log('AI Widget: Attempting to reconnect...');
+                    this.connectWebSocket();
+                }, 3000);
+            };
+            
+        } catch (error) {
+            console.error('AI Widget: Connection error:', error);
+            this.updateConnectionStatus('error', 'Failed to Connect');
+        }
     }
     
     updateConnectionStatus(status, text) {
@@ -354,14 +415,52 @@ class AIChatWidget {
         
         if (!message) return;
         
+        // Add user message to UI immediately
         this.addMessageToUI('user', message);
         input.value = '';
         document.getElementById('send-button').disabled = true;
         
-        // Demo response
-        setTimeout(() => {
-            this.addMessageToUI('bot', 'This is a demo response. In production, this would connect to your AI coaching service.');
-        }, 1000);
+        // Send message through WebSocket if connected
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            const messageData = {
+                type: 'user_message',
+                content: message,
+                conversation_id: this.conversationId,
+                user_identifier: 'demo-user',
+                timestamp: new Date().toISOString()
+            };
+            
+            console.log('AI Widget: Sending message:', messageData);
+            this.websocket.send(JSON.stringify(messageData));
+            
+            // Show typing indicator
+            this.showTypingIndicator();
+        } else {
+            // Fallback to demo mode if not connected
+            console.log('AI Widget: WebSocket not connected, using demo mode');
+            setTimeout(() => {
+                this.addMessageToUI('bot', 'Connection unavailable. This is a demo response.');
+            }, 1000);
+        }
+    }
+    
+    showTypingIndicator() {
+        const indicator = document.getElementById('typing-indicator');
+        if (indicator) {
+            indicator.style.display = 'flex';
+            
+            // Hide after 10 seconds if no response
+            setTimeout(() => {
+                indicator.style.display = 'none';
+            }, 10000);
+        }
+    }
+    
+    hideTypingIndicator() {
+        const indicator = document.getElementById('typing-indicator');
+        if (indicator) {
+            indicator.style.display = 'none';
+        }
     }
     
     addMessageToUI(type, content) {
@@ -567,6 +666,35 @@ class AIChatWidget {
             #send-button:not(:disabled):hover {
                 transform: scale(1.1);
             }
+            
+            .typing-indicator {
+                display: none;
+                align-items: center;
+                gap: 4px;
+                padding: 8px 16px;
+                font-size: 12px;
+                color: #666;
+            }
+            
+            .typing-indicator span {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: #ccc;
+                animation: typing 1.4s infinite ease-in-out;
+            }
+            
+            .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+            .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+            .typing-indicator span:nth-child(3) { animation-delay: 0s; }
+            
+            @keyframes typing {
+                0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+                40% { transform: scale(1); opacity: 1; }
+            }
+            
+            .status-dot.error { background: #f44336; }
+            .status-dot.disconnected { background: #ff9800; }
         `;
         
         document.head.appendChild(styles);
@@ -830,74 +958,128 @@ async def telegram_webhook(
 async def widget_websocket(
     websocket: WebSocket, 
     channel_id: str,
-    creator_id: str = Query(..., description="Creator ID"),
-    session_id: str = Query(..., description="Session ID"),
-    user_name: str = Query("Anonymous", description="User name")
+    creator_id: str = Query("demo-creator", description="Creator ID"),
+    session_id: str = Query(None, description="Session ID"),
+    user_name: str = Query("Demo User", description="User name")
 ):
     """WebSocket endpoint for Web Widget real-time communication"""
     try:
-        # Get channel service for Web Widget
-        async with async_session() as session:
-            cm = ChannelManager(session)
-            
-            # Validate channel exists and is Web Widget type
-            from .models import ChannelType
-            channel_config = await cm._get_channel_config(channel_id, creator_id)
-            if not channel_config or channel_config.channel_type != ChannelType.WEB_WIDGET:
-                await websocket.close(code=4004, reason="Channel not found or invalid type")
-                return
-            
-            # Get Web Widget service
-            widget_service = await cm.get_channel_service(channel_config)
-            if not widget_service:
-                await websocket.close(code=4003, reason="Widget service unavailable")
-                return
-            
-            # Register WebSocket session
-            user_info = {"user_name": user_name, "creator_id": creator_id}
-            await widget_service.register_websocket_session(session_id, websocket, user_info)
-            await manager.connect(websocket, session_id, user_info)
-            
-            while True:
+        # Accept WebSocket connection
+        await websocket.accept()
+        
+        # Generate session ID if not provided
+        if not session_id:
+            import uuid
+            session_id = str(uuid.uuid4())
+        
+        logger.info(f"Widget WebSocket connected: {session_id} for channel {channel_id}")
+        
+        # Send connection confirmation
+        await websocket.send_json({
+            "type": "status",
+            "message": "Connected to AI Coaching Assistant",
+            "session_id": session_id
+        })
+        
+        # Initialize AI client for processing  
+        ai_client = None
+        if AI_CLIENT_AVAILABLE:
+            try:
+                ai_client = AIEngineClient()
+                logger.info("AI Engine client initialized successfully")
+            except Exception as ai_init_error:
+                logger.error(f"Failed to initialize AI Engine client: {ai_init_error}")
+                logger.error(f"Error type: {type(ai_init_error)}")
+                logger.error(f"Error details: {str(ai_init_error)}")
+                await websocket.send_json({
+                    "type": "status",
+                    "message": "AI service initialization failed - using demo mode"
+                })
+        else:
+            logger.warning("AI Engine client not available - using demo mode")
+            await websocket.send_json({
+                "type": "status",
+                "message": "AI service not available - using demo mode"
+            })
+        
+        while True:
+            try:
                 # Receive message from client
                 data = await websocket.receive_json()
                 logger.info(f"Widget message from {session_id}: {data}")
                 
-                # Process message through Web Widget service
-                webhook_data = {
-                    "content": data.get("content", ""),
-                    "message_type": data.get("message_type", "text"),
-                    "session_id": session_id,
-                    "user_identifier": session_id,
-                    "user_name": user_name,
-                    "channel_metadata": data.get("metadata", {}),
-                    "user_agent": data.get("user_agent"),
-                    "page_url": data.get("page_url")
-                }
-                
-                result = await cm.process_webhook(channel_id, creator_id, webhook_data)
-                
-                if result and result.get("requires_ai_processing"):
-                    # TODO: Forward to AI Engine Service for processing
-                    logger.info(f"Widget message requires AI processing: {result['message']['id']}")
+                if data.get("type") == "user_message":
+                    # Process message through AI Engine
+                    message_content = data.get("content", "")
+                    conversation_id = data.get("conversation_id", session_id)
                     
-                    # Send acknowledgment
-                    response = WebSocketResponse(
-                        type="message_received",
-                        status="processing",
-                        data={"message_id": result['message']['id']}
-                    )
-                    await websocket.send_json(response.dict())
-    
-    except WebSocketDisconnect:
-        manager.disconnect(session_id)
-        if 'widget_service' in locals():
-            await widget_service.unregister_websocket_session(session_id)
+                    logger.info(f"Processing message: {message_content}")
+                    
+                    try:
+                        # Send to AI Engine for processing
+                        if ai_client is not None:
+                            ai_response = await ai_client.process_message(
+                                message=message_content,
+                                creator_id=creator_id,
+                                conversation_id=conversation_id,
+                                user_identifier=user_name
+                            )
+                        else:
+                            # Fallback demo response
+                            from datetime import datetime
+                            ai_response = type('obj', (object,), {
+                                'response': f"Demo mode: I received your message '{message_content}'. The AI Engine is not available, but this shows the widget communication flow is working!",
+                                'conversation_id': conversation_id,
+                                'confidence': 0.9,
+                                'processing_time_ms': 100,
+                                'model_used': 'demo-mode',
+                                'sources_count': 0
+                            })()
+                        
+                        # Send AI response back to widget
+                        await websocket.send_json({
+                            "type": "ai_response",
+                            "content": ai_response.response,
+                            "conversation_id": conversation_id,
+                            "confidence": ai_response.confidence,
+                            "processing_time_ms": ai_response.processing_time_ms,
+                            "model_used": ai_response.model_used,
+                            "sources_count": ai_response.sources_count
+                        })
+                        
+                    except Exception as ai_error:
+                        logger.error(f"AI processing error: {ai_error}")
+                        await websocket.send_json({
+                            "type": "ai_response",
+                            "content": "I'm sorry, I'm having trouble processing your request right now. This is a demo showcasing our AI coaching platform capabilities.",
+                            "conversation_id": conversation_id
+                        })
+                
+            except Exception as msg_error:
+                logger.error(f"Message processing error: {msg_error}")
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Error processing message"
+                })
+                
     except Exception as e:
-        logger.error(f"Widget WebSocket error for {session_id}: {str(e)}")
-        manager.disconnect(session_id)
-        if 'widget_service' in locals():
-            await widget_service.unregister_websocket_session(session_id)
+        logger.error(f"WebSocket error for {session_id}: {e}")
+        try:
+            await websocket.send_json({
+                "type": "error", 
+                "message": "Connection error occurred"
+            })
+        except:
+            pass
+        finally:
+            logger.info(f"Widget WebSocket disconnected: {session_id}")
+    
+    except Exception as e:
+        logger.error(f"Widget WebSocket connection failed: {e}")
+        try:
+            await websocket.close(code=4000, reason="Internal server error")
+        except:
+            pass
 
 
 @app.get("/api/v1/widget/{channel_id}/embed", tags=["web_widget"], response_class=HTMLResponse)

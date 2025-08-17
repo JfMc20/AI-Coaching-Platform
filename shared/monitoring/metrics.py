@@ -318,6 +318,50 @@ class MetricsCollector:
         except Exception as e:
             logger.error(f"Failed to record error metrics: {e}")
     
+    def record_ml_operation_start(self, ml_metrics: 'MLMetrics'):
+        """
+        Record the start of an ML operation
+        
+        Args:
+            ml_metrics: ML metrics data container
+        """
+        try:
+            # Import time at the top would be better, but for now:
+            import time
+            # Just store the start time for now - actual recording happens on completion
+            ml_metrics.start_time = time.time()
+            logger.debug(f"ML operation started: {ml_metrics.operation_type} for model {ml_metrics.model_name}")
+        except Exception as e:
+            logger.error(f"Failed to record ML operation start: {e}")
+    
+    def record_ml_operation_success(
+        self,
+        ml_metrics: 'MLMetrics',
+        duration_ms: float,
+        sources_count: int = 0
+    ):
+        """
+        Record successful completion of an ML operation
+        
+        Args:
+            ml_metrics: ML metrics data container
+            duration_ms: Duration in milliseconds
+            sources_count: Number of sources/results
+        """
+        try:
+            duration_seconds = duration_ms / 1000.0
+            self.record_request(
+                operation_type=ml_metrics.operation_type,
+                model_name=ml_metrics.model_name,
+                duration_seconds=duration_seconds,
+                creator_id=ml_metrics.creator_id,
+                status="success",
+                tokens=ml_metrics.token_count,
+                input_length=ml_metrics.input_length
+            )
+        except Exception as e:
+            logger.error(f"Failed to record ML operation success: {e}")
+    
     def record_resource_usage(
         self,
         service: str,
@@ -546,7 +590,19 @@ def get_metrics_collector() -> MetricsCollector:
     return _metrics_collector
 
 
+@dataclass
 class MLMetrics:
+    """ML operation metrics data container"""
+    operation_type: OperationType
+    model_name: str
+    creator_id: str
+    input_length: Optional[int] = None
+    output_length: Optional[int] = None
+    token_count: Optional[int] = None
+    start_time: Optional[float] = None
+
+
+class MLMetricsUtils:
     """Convenience class for ML-specific metrics recording"""
     
     @staticmethod

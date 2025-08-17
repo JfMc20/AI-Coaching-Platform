@@ -24,6 +24,7 @@ from .metrics import (
     PerformanceMetrics,
     ErrorMetrics,
     OperationType,
+    ErrorType,
     get_metrics_collector
 )
 from .privacy import (
@@ -62,6 +63,7 @@ __all__ = [
     "PerformanceMetrics", 
     "ErrorMetrics",
     "OperationType",
+    "ErrorType",
     "get_metrics_collector",
     
     # Privacy

@@ -81,7 +81,7 @@ class OllamaManager:
         ollama_url: Optional[str] = None,
         embedding_model: Optional[str] = None,
         chat_model: Optional[str] = None,
-        timeout: int = 60,
+        timeout: int = 180,  # 3 minutes for model loading
         max_retries: int = 3
     ):
         """
@@ -135,6 +135,9 @@ class OllamaManager:
         self._models_cache: Dict[str, ModelInfo] = {}
         self._cache_ttl = 300  # 5 minutes cache TTL
         self._last_cache_update: Optional[datetime] = None
+        
+        # Request coordination to prevent endpoint confusion
+        self._request_lock = asyncio.Lock()
         
         logger.info(
             f"Ollama Manager initialized - "
@@ -205,8 +208,11 @@ class OllamaManager:
                 await asyncio.sleep(wait_time)
             
             except Exception as e:
-                logger.error(f"Unexpected error in Ollama request: {str(e)}")
-                raise OllamaError(f"Unexpected error: {str(e)}") from e
+                logger.error(f"Unexpected error in Ollama request: {type(e).__name__}: {str(e)}")
+                logger.error(f"Exception details: {repr(e)}")
+                import traceback
+                logger.error(f"Full traceback: {traceback.format_exc()}")
+                raise OllamaError(f"Unexpected error: {type(e).__name__}: {str(e)}") from e
     
     async def health_check(self) -> Dict[str, Any]:
         """
@@ -373,45 +379,49 @@ class OllamaManager:
         model_name = model or self.embedding_model
         start_time = datetime.utcnow()
         
-        try:
-            # Generate embeddings for each text
-            embeddings = []
-            total_tokens = 0
-            
-            for text in texts:
-                data = {
-                    "model": model_name,
-                    "prompt": text
-                }
+        # Use lock to prevent concurrent requests that confuse Ollama
+        async with self._request_lock:
+            try:
+                logger.info(f"🔢 Generating embeddings for {len(texts)} texts using {model_name}")
                 
-                response = await self._make_request("POST", "/api/embeddings", data=data)
+                # Generate embeddings for each text
+                embeddings = []
+                total_tokens = 0
                 
-                if "embedding" not in response:
-                    raise OllamaModelError(f"No embedding in response: {response}")
+                for text in texts:
+                    data = {
+                        "model": model_name,
+                        "prompt": text
+                    }
+                    
+                    response = await self._make_request("POST", "/api/embeddings", data=data)
+                    
+                    if "embedding" not in response:
+                        raise OllamaModelError(f"No embedding in response: {response}")
+                    
+                    embeddings.append(response["embedding"])
+                    
+                    # Estimate token count (rough approximation)
+                    total_tokens += len(text.split())
                 
-                embeddings.append(response["embedding"])
+                processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
                 
-                # Estimate token count (rough approximation)
-                total_tokens += len(text.split())
-            
-            processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
-            
-            logger.debug(
-                f"Generated {len(embeddings)} embeddings using {model_name} "
-                f"in {processing_time:.2f}ms"
-            )
-            
-            return EmbeddingResponse(
-                embeddings=embeddings,
-                model=model_name,
-                processing_time_ms=processing_time,
-                token_count=total_tokens
-            )
-            
-        except Exception as e:
-            error_msg = f"Failed to generate embeddings with {model_name}: {str(e)}"
-            logger.error(error_msg)
-            raise OllamaModelError(error_msg) from e
+                logger.debug(
+                    f"Generated {len(embeddings)} embeddings using {model_name} "
+                    f"in {processing_time:.2f}ms"
+                )
+                
+                return EmbeddingResponse(
+                    embeddings=embeddings,
+                    model=model_name,
+                    processing_time_ms=processing_time,
+                    token_count=total_tokens
+                )
+                
+            except Exception as e:
+                error_msg = f"Failed to generate embeddings with {model_name}: {str(e)}"
+                logger.error(error_msg)
+                raise OllamaModelError(error_msg) from e
     
     async def generate_chat_response(
         self,
@@ -445,50 +455,60 @@ class OllamaManager:
         model_name = model or self.chat_model
         start_time = datetime.utcnow()
         
-        try:
-            # Build request data
-            data = {
-                "model": model_name,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": temperature
+        # Use lock to prevent concurrent requests that confuse Ollama
+        async with self._request_lock:
+            try:
+                logger.info(f"💬 Generating chat response using {model_name}")
+                
+                # Build request data
+                data = {
+                    "model": model_name,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": temperature
+                    }
                 }
-            }
-            
-            if context:
-                data["context"] = context
-            
-            if system_prompt:
-                data["system"] = system_prompt
-            
-            if max_tokens:
-                data["options"]["num_predict"] = max_tokens
-            
-            response = await self._make_request("POST", "/api/generate", data=data)
-            
-            if "response" not in response:
-                raise OllamaModelError(f"No response in chat completion: {response}")
-            
-            processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
-            
-            logger.debug(
-                f"Generated chat response using {model_name} "
-                f"in {processing_time:.2f}ms"
-            )
-            
-            return ChatResponse(
-                response=response["response"],
-                model=model_name,
-                processing_time_ms=processing_time,
-                context=response.get("context"),
-                done=response.get("done", True)
-            )
-            
-        except Exception as e:
-            error_msg = f"Failed to generate chat response with {model_name}: {str(e)}"
-            logger.error(error_msg)
-            raise OllamaModelError(error_msg) from e
+                
+                logger.info(f"Ollama request data: model={model_name}, prompt_length={len(prompt)}, temperature={temperature}")
+                logger.debug(f"Full prompt: {prompt[:200]}..." if len(prompt) > 200 else f"Full prompt: {prompt}")
+                
+                if context:
+                    data["context"] = context
+                
+                if system_prompt:
+                    data["system"] = system_prompt
+                
+                if max_tokens:
+                    data["options"]["num_predict"] = max_tokens
+                
+                logger.info(f"Making Ollama request to /api/generate...")
+                response = await self._make_request("POST", "/api/generate", data=data)
+                logger.info(f"Ollama response received: {type(response)}")
+                
+                if "response" not in response:
+                    logger.error(f"Invalid Ollama response format: {response}")
+                    raise OllamaModelError(f"No response in chat completion: {response}")
+                
+                processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+                
+                logger.debug(
+                    f"Generated chat response using {model_name} "
+                    f"in {processing_time:.2f}ms"
+                )
+                
+                return ChatResponse(
+                    response=response["response"],
+                    model=model_name,
+                    processing_time_ms=processing_time,
+                    context=response.get("context"),
+                    done=response.get("done", True)
+                )
+                
+            except Exception as e:
+                error_msg = f"Failed to generate chat response with {model_name}: {str(e)}"
+                logger.error(error_msg)
+                raise OllamaModelError(error_msg) from e
     
     async def ensure_models_available(self) -> Dict[str, bool]:
         """
@@ -530,12 +550,45 @@ class OllamaManager:
             
             results["chat_model"] = chat_available
             
+            # Pre-load models in memory for faster responses
+            logger.info("Pre-loading models in memory...")
+            await self.preload_models()
+            
             return results
             
         except Exception as e:
             error_msg = f"Failed to ensure models availability: {str(e)}"
             logger.error(error_msg)
             raise OllamaModelError(error_msg) from e
+    
+    async def preload_models(self):
+        """
+        Pre-load models in memory by sending warm-up requests
+        This ensures models are ready for immediate use
+        """
+        try:
+            logger.info("🔥 Warming up embedding model...")
+            # Pre-load embedding model with a dummy request
+            await self.generate_embeddings(["warmup query"])
+            logger.info("✅ Embedding model warmed up")
+            
+            # Add delay between model requests to prevent conflicts
+            logger.info("⏱️ Waiting 3 seconds before chat model warmup...")
+            await asyncio.sleep(3)
+            
+            logger.info("🔥 Warming up chat model...")
+            # Pre-load chat model with a dummy request
+            await self.generate_chat_response(
+                prompt="System: You are a helpful assistant.\nUser: Hello\nAssistant:",
+                temperature=0.7,
+                max_tokens=10
+            )
+            logger.info("✅ Chat model warmed up")
+            
+        except Exception as e:
+            # Don't fail startup if pre-loading fails
+            logger.warning(f"⚠️ Model pre-loading failed (service will continue): {str(e)}")
+            logger.warning("Models will be loaded on first request (may cause delays)")
     
     async def close(self):
         """Close aiohttp session and cleanup resources"""

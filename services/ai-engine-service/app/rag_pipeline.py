@@ -5,6 +5,7 @@ Implements Retrieval-Augmented Generation with conversation context management
 
 import logging
 import uuid
+import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass
@@ -17,7 +18,7 @@ from shared.models.conversations import Message, MessageRole
 from shared.exceptions.base import BaseServiceException
 from shared.monitoring import (
     trace_ml_operation, get_metrics_collector, create_correlation_id,
-    OperationType, MLMetrics
+    OperationType, MLMetrics, ErrorType
 )
 
 # Import the new embedding manager
@@ -305,9 +306,13 @@ class ConversationManager:
             
         except Exception as e:
             # Record conversation error
-            operation_time = (datetime.utcnow() - start_time).total_seconds() * 1000
-            metrics_collector.record_ml_operation_error(
-                conv_metrics, operation_time, str(e)
+            operation_time = (datetime.utcnow() - start_time).total_seconds()
+            metrics_collector.record_error(
+                operation_type=conv_metrics.operation_type,
+                model_name=conv_metrics.model_name,
+                error_type=ErrorType.PROCESSING_ERROR,
+                creator_id=conv_metrics.creator_id,
+                duration_seconds=operation_time
             )
             
             logger.error(f"Failed to add conversation exchange: {e}")
@@ -465,16 +470,24 @@ class RAGPipeline:
                 query, creator_id, limit=self.max_retrieved_chunks
             )
             
+            # Add timing delay after embedding operations to prevent Ollama conflicts
+            logger.info("⏱️ Adding 2-second delay after embedding operations...")
+            await asyncio.sleep(2)
+            
             # 3. Build contextual prompt
             prompt = await self.build_contextual_prompt(
                 query, conversation_context, relevant_chunks, context_window
             )
             
             # 4. Generate response
+            # DEBUG: Try with simple prompt first to test Ollama
+            simple_prompt = f"User: {query}\nAssistant:"
+            logger.info(f"DEBUG: Using simple prompt for testing: {simple_prompt[:100]}...")
+            
             chat_response = await self.ollama_manager.generate_chat_response(
-                prompt=prompt,
+                prompt=simple_prompt,
                 temperature=0.7,
-                max_tokens=1000
+                max_tokens=200
             )
             
             # 5. Calculate confidence score
@@ -525,9 +538,13 @@ class RAGPipeline:
             
         except Exception as e:
             # Record error metrics
-            processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
-            metrics_collector.record_ml_operation_error(
-                ml_metrics, processing_time, str(e)
+            processing_time = (datetime.utcnow() - start_time).total_seconds()
+            metrics_collector.record_error(
+                operation_type=ml_metrics.operation_type,
+                model_name=ml_metrics.model_name,
+                error_type=ErrorType.PROCESSING_ERROR,
+                creator_id=ml_metrics.creator_id,
+                duration_seconds=processing_time
             )
             
             error_msg = f"RAG pipeline processing failed: {str(e)}"
@@ -602,9 +619,13 @@ class RAGPipeline:
             
         except EmbeddingError as e:
             # Record search error metrics
-            processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
-            metrics_collector.record_ml_operation_error(
-                search_metrics, processing_time, str(e)
+            processing_time = (datetime.utcnow() - start_time).total_seconds()
+            metrics_collector.record_error(
+                operation_type=search_metrics.operation_type,
+                model_name=search_metrics.model_name,
+                error_type=ErrorType.PROCESSING_ERROR,
+                creator_id=search_metrics.creator_id,
+                duration_seconds=processing_time
             )
             
             error_msg = f"Optimized knowledge retrieval failed: {str(e)}"
@@ -612,9 +633,13 @@ class RAGPipeline:
             raise RAGError(error_msg) from e
         except Exception as e:
             # Record unexpected error metrics
-            processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
-            metrics_collector.record_ml_operation_error(
-                search_metrics, processing_time, str(e)
+            processing_time = (datetime.utcnow() - start_time).total_seconds()
+            metrics_collector.record_error(
+                operation_type=search_metrics.operation_type,
+                model_name=search_metrics.model_name,
+                error_type=ErrorType.PROCESSING_ERROR,
+                creator_id=search_metrics.creator_id,
+                duration_seconds=processing_time
             )
             
             error_msg = f"Unexpected error in knowledge retrieval: {str(e)}"

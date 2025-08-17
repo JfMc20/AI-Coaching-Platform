@@ -1,55 +1,26 @@
 {
-  "projectType": "microservices-ai-platform",
-  "primaryLanguage": "python",
-  "framework": "fastapi",
-  "architecture": "multi-tenant-microservices",
-  "testFramework": "pytest",
-  "dependencyManager": "poetry",
-  "containerization": "docker-compose",
-  "databases": ["postgresql", "redis", "chromadb"],
-  "aiFrameworks": ["ollama", "chromadb"],
-  "monitoringStack": ["opentelemetry", "prometheus"],
-  "codeQuality": {
-    "formatter": "black",
-    "linter": "flake8",
-    "typeChecker": "mypy",
-    "importSorter": "isort"
+  "projectName": "Multi-Channel AI Coaching Platform",
+  "projectType": "fastapi-microservices",
+  "defaultBehavior": {
+    "alwaysTestAfterChanges": true,
+    "requireMultiTenantPattern": true,
+    "enforceAsyncPatterns": true,
+    "autoFormatCode": true
   },
-  "testCoverage": {
-    "minimum": 85,
-    "target": 90
+  "shortcuts": {
+    "dev": "make up && make health",
+    "test": "make test-coverage",
+    "deploy": "docker-compose -f docker-compose.prod.yml up -d"
   },
-  "services": [
-    {
-      "name": "auth-service",
-      "port": 8001,
-      "status": "production-ready",
-      "primaryFeatures": ["jwt", "rbac", "gdpr", "multi-tenant"]
-    },
-    {
-      "name": "creator-hub-service", 
-      "port": 8002,
-      "status": "foundation",
-      "primaryFeatures": ["content-management", "program-builder"]
-    },
-    {
-      "name": "ai-engine-service",
-      "port": 8003,
-      "status": "production-ready", 
-      "primaryFeatures": ["rag-pipeline", "ollama", "chromadb", "document-processing"]
-    },
-    {
-      "name": "channel-service",
-      "port": 8004,
-      "status": "foundation",
-      "primaryFeatures": ["websocket", "multi-channel"]
-    }
-  ],
-  "developmentPatterns": {
-    "multiTenant": true,
-    "asyncPatterns": "mandatory",
-    "authentication": "jwt-required",
-    "dataIsolation": "row-level-security",
-    "rateLimiting": "redis-backed"
-  }
+  "codePatterns": {
+    "databaseSession": "get_tenant_session",
+    "authentication": "get_current_user",
+    "validation": "pydantic models required"
+  },
+  "priorities": [
+    "Creator Hub Enhancement",
+    "Multi-Channel Expansion", 
+    "Visual Testing Service",
+    "Personality System"
+  ]
 }

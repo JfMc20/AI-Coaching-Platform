@@ -9,33 +9,50 @@ from typing import Dict, Any, Optional
 import httpx
 from pydantic import BaseModel, Field
 
-from shared.config.env_constants import get_env_value, AI_ENGINE_URL
+from shared.config.env_constants import get_env_value
+# Use the correct environment variable name
+AI_ENGINE_URL = "AI_ENGINE_SERVICE_URL"
 
 logger = logging.getLogger(__name__)
 
 
 class ConversationRequest(BaseModel):
     """Request model for AI conversation processing"""
-    message: str = Field(..., description="User message to process")
+    query: str = Field(..., description="User query to process")
     creator_id: str = Field(..., description="Creator ID for context")
     conversation_id: str = Field(..., description="Conversation identifier")
-    user_identifier: str = Field(None, description="User identifier (optional)")
 
 
 class ConversationResponse(BaseModel):
     """Response model from AI conversation processing"""
+    model_config = {"protected_namespaces": ()}
+    
     response: str = Field(..., description="AI-generated response")
     conversation_id: str = Field(..., description="Conversation identifier")
-    creator_id: str = Field(..., description="Creator ID")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    confidence: float = Field(..., description="Response confidence score")
+    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
+    model_used: str = Field(..., description="AI model used for generation")
+    sources_count: int = Field(..., description="Number of knowledge sources used")
+    sources: list = Field(default_factory=list, description="Knowledge sources used")
 
 
 class AIEngineClient:
     """Client for communicating with AI Engine Service"""
     
     def __init__(self):
-        self.base_url = get_env_value(AI_ENGINE_URL, "http://ai-engine-service:8003")
+        # Use the same pattern as database.py
+        self.base_url = get_env_value(AI_ENGINE_URL, fallback=True) or "http://ai-engine-service:8003"
+        
+        # Convert localhost to service name for Docker networking
+        if "localhost" in self.base_url:
+            self.base_url = self.base_url.replace("localhost", "ai-engine-service")
+        
+        # Ensure protocol is included
+        if not self.base_url.startswith(('http://', 'https://')):
+            self.base_url = f"http://{self.base_url}"
+            
         self.timeout = 30.0  # 30 seconds timeout for AI responses
+        logger.info(f"AI Engine Client initialized with URL: {self.base_url}")
         
     async def process_message(
         self,
@@ -63,10 +80,9 @@ class AIEngineClient:
         """
         try:
             request_data = ConversationRequest(
-                message=message,
+                query=message,
                 creator_id=creator_id,
-                conversation_id=conversation_id,
-                user_identifier=user_identifier
+                conversation_id=conversation_id
             )
             
             headers = {

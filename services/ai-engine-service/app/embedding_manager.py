@@ -7,6 +7,7 @@ import logging
 import asyncio
 import hashlib
 import json
+import time
 import unicodedata
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
@@ -448,7 +449,7 @@ class EmbeddingManager:
         # Performance settings
         self.embedding_batch_size = 10
         self.max_concurrent_embeddings = 5
-        self.embedding_timeout = 30  # seconds
+        self.embedding_timeout = 60  # seconds - increased for debugging
     
     async def generate_embeddings_batch(
         self,
@@ -503,10 +504,20 @@ class EmbeddingManager:
                     batch = cache_misses[i:i + self.embedding_batch_size]
                     
                     # Generate embeddings with timeout
-                    batch_embeddings = await asyncio.wait_for(
-                        self.ollama_manager.generate_embeddings(batch),
-                        timeout=self.embedding_timeout
-                    )
+                    logger.info(f"DEBUG: Generating embeddings for batch of {len(batch)} items, timeout={self.embedding_timeout}s")
+                    start_time = time.time()
+                    
+                    try:
+                        batch_embeddings = await asyncio.wait_for(
+                            self.ollama_manager.generate_embeddings(batch),
+                            timeout=self.embedding_timeout
+                        )
+                        elapsed = time.time() - start_time
+                        logger.info(f"DEBUG: Embedding generation completed in {elapsed:.2f}s")
+                    except asyncio.TimeoutError:
+                        elapsed = time.time() - start_time
+                        logger.error(f"DEBUG: Embedding generation timed out after {elapsed:.2f}s (limit: {self.embedding_timeout}s)")
+                        raise EmbeddingError(f"Embedding generation timed out after {elapsed:.2f}s")
                     
                     new_embeddings.extend(batch_embeddings.embeddings)
                 

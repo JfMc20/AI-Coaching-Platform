@@ -8,6 +8,7 @@ with correlation ID tracking and span instrumentation for performance monitoring
 import uuid
 import time
 import logging
+import inspect
 from typing import Dict, Any, Optional, Callable
 from dataclasses import dataclass
 from functools import wraps
@@ -200,7 +201,7 @@ def trace_ml_operation(
                     raise
         
         # Return appropriate wrapper based on function type
-        if hasattr(func, '__call__') and hasattr(func, '__await__'):
+        if inspect.iscoroutinefunction(func):
             return async_wrapper
         else:
             return sync_wrapper
