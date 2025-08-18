@@ -189,6 +189,7 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       CHROMADB_URL: ${CHROMADB_URL:-http://chromadb:8000}
       PORT: 8003
+      ANONYMIZED_TELEMETRY: "false"
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]

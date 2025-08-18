@@ -7,7 +7,7 @@ for ML services with configurable thresholds and escalation policies.
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List, Callable, Union, Awaitable
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime, timedelta
@@ -327,7 +327,7 @@ class AlertManager:
             )
         ]
     
-    def add_notification_handler(self, handler: Callable[[Alert], None]):
+    def add_notification_handler(self, handler: Union[Callable[[Alert], None], Callable[[Alert], Awaitable[None]]]):
         """
         Add a notification handler for alerts
         
@@ -503,7 +503,10 @@ class AlertManager:
         """
         for handler in self._notification_handlers:
             try:
-                await asyncio.get_event_loop().run_in_executor(None, handler, alert)
+                if asyncio.iscoroutinefunction(handler):
+                    await handler(alert)
+                else:
+                    await asyncio.get_event_loop().run_in_executor(None, handler, alert)
             except Exception as e:
                 logger.error(f"Notification handler failed: {e}")
     

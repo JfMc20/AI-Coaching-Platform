@@ -8,7 +8,7 @@ import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 from httpx import HTTPError, ConnectError, TimeoutException
 
-from shared.exceptions.base import ServiceError
+from shared.exceptions.base import BaseServiceException
 from shared.exceptions.documents import DocumentProcessingError
 
 
@@ -25,7 +25,7 @@ class TestOllamaErrorHandling:
         with patch.object(ollama_manager, 'client') as mock_client:
             mock_client.generate = AsyncMock(side_effect=ConnectError("Connection failed"))
             
-            with pytest.raises(ServiceError) as exc_info:
+            with pytest.raises(BaseServiceException) as exc_info:
                 await ollama_manager.generate_chat_response(
                     prompt="Test prompt",
                     model="llama3.2"
@@ -43,7 +43,7 @@ class TestOllamaErrorHandling:
         with patch.object(ollama_manager, 'client') as mock_client:
             mock_client.generate = AsyncMock(side_effect=TimeoutException("Request timeout"))
             
-            with pytest.raises(ServiceError) as exc_info:
+            with pytest.raises(BaseServiceException) as exc_info:
                 await ollama_manager.generate_chat_response(
                     prompt="Test prompt",
                     model="llama3.2"
@@ -61,7 +61,7 @@ class TestOllamaErrorHandling:
         with patch.object(ollama_manager, 'client') as mock_client:
             mock_client.generate = AsyncMock(side_effect=HTTPError("Model not found"))
             
-            with pytest.raises(ServiceError) as exc_info:
+            with pytest.raises(BaseServiceException) as exc_info:
                 await ollama_manager.generate_chat_response(
                     prompt="Test prompt",
                     model="nonexistent-model"
@@ -83,7 +83,7 @@ class TestOllamaErrorHandling:
                 "incomplete": "response"
             })
             
-            with pytest.raises(ServiceError):
+            with pytest.raises(BaseServiceException):
                 await ollama_manager.generate_chat_response(
                     prompt="Test prompt",
                     model="llama3.2"
@@ -103,7 +103,7 @@ class TestChromaDBErrorHandling:
         with patch.object(chromadb_manager, 'client') as mock_client:
             mock_client.get_collection = Mock(side_effect=ConnectionError("ChromaDB unavailable"))
             
-            with pytest.raises(ServiceError) as exc_info:
+            with pytest.raises(BaseServiceException) as exc_info:
                 await chromadb_manager.search_similar_chunks(
                     creator_id="test_creator",
                     query_embedding=[0.1] * 768,
@@ -143,7 +143,7 @@ class TestChromaDBErrorHandling:
             mock_collection.query = Mock(side_effect=ValueError("Dimension mismatch"))
             mock_client.get_collection = Mock(return_value=mock_collection)
             
-            with pytest.raises(ServiceError) as exc_info:
+            with pytest.raises(BaseServiceException) as exc_info:
                 await chromadb_manager.search_similar_chunks(
                     creator_id="test_creator",
                     query_embedding=[0.1] * 512,  # Wrong dimension
@@ -248,7 +248,7 @@ class TestRAGPipelineErrorHandling:
              patch.object(rag_pipeline, 'conversation_manager') as mock_conv:
             
             # ChromaDB fails but Ollama works
-            mock_chromadb.search_similar_chunks = AsyncMock(side_effect=ServiceError("ChromaDB error"))
+            mock_chromadb.search_similar_chunks = AsyncMock(side_effect=BaseServiceException("ChromaDB error"))
             mock_ollama.generate_chat_response = AsyncMock(return_value=Mock(
                 response="Fallback response without context",
                 model="llama3.2"
@@ -278,9 +278,9 @@ class TestRAGPipelineErrorHandling:
              patch.object(rag_pipeline, 'conversation_manager') as mock_conv:
             
             # All components fail
-            mock_chromadb.search_similar_chunks = AsyncMock(side_effect=ServiceError("ChromaDB error"))
-            mock_ollama.generate_chat_response = AsyncMock(side_effect=ServiceError("Ollama error"))
-            mock_conv.get_context = AsyncMock(side_effect=ServiceError("Cache error"))
+            mock_chromadb.search_similar_chunks = AsyncMock(side_effect=BaseServiceException("ChromaDB error"))
+            mock_ollama.generate_chat_response = AsyncMock(side_effect=BaseServiceException("Ollama error"))
+            mock_conv.get_context = AsyncMock(side_effect=BaseServiceException("Cache error"))
             
             with pytest.raises(RAGError) as exc_info:
                 await rag_pipeline.process_query(

@@ -310,7 +310,7 @@ class ConversationManager:
             metrics_collector.record_error(
                 operation_type=conv_metrics.operation_type,
                 model_name=conv_metrics.model_name,
-                error_type=ErrorType.PROCESSING_ERROR,
+                error_type=ErrorType.MODEL_ERROR,
                 creator_id=conv_metrics.creator_id,
                 duration_seconds=operation_time
             )
@@ -499,7 +499,7 @@ class RAGPipeline:
             
             # Record successful completion metrics
             ml_metrics.output_length = len(chat_response.response)
-            ml_metrics.token_count = chat_response.total_duration or 0  # Use duration as proxy
+            ml_metrics.token_count = chat_response.processing_time_ms or 0  # Use duration as proxy
             metrics_collector.record_ml_operation_success(
                 ml_metrics, processing_time, len(relevant_chunks)
             )
@@ -542,7 +542,7 @@ class RAGPipeline:
             metrics_collector.record_error(
                 operation_type=ml_metrics.operation_type,
                 model_name=ml_metrics.model_name,
-                error_type=ErrorType.PROCESSING_ERROR,
+                error_type=ErrorType.MODEL_ERROR,
                 creator_id=ml_metrics.creator_id,
                 duration_seconds=processing_time
             )
@@ -623,7 +623,7 @@ class RAGPipeline:
             metrics_collector.record_error(
                 operation_type=search_metrics.operation_type,
                 model_name=search_metrics.model_name,
-                error_type=ErrorType.PROCESSING_ERROR,
+                error_type=ErrorType.MODEL_ERROR,
                 creator_id=search_metrics.creator_id,
                 duration_seconds=processing_time
             )
@@ -637,7 +637,7 @@ class RAGPipeline:
             metrics_collector.record_error(
                 operation_type=search_metrics.operation_type,
                 model_name=search_metrics.model_name,
-                error_type=ErrorType.PROCESSING_ERROR,
+                error_type=ErrorType.MODEL_ERROR,
                 creator_id=search_metrics.creator_id,
                 duration_seconds=processing_time
             )
