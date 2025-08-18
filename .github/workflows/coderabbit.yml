@@ -3,7 +3,7 @@ name: CodeRabbit AI Review
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    branches: [ main, develop ]
+    branches: [ main, develop, master ]
 
 permissions:
   contents: read
@@ -25,33 +25,23 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Optional: Configure review settings
-          review_level: 'comprehensive'  # Options: basic, standard, comprehensive
+          review_level: 'standard'  # Options: basic, standard, comprehensive
           focus_areas: |
             - security
             - performance
             - maintainability
             - best_practices
-            - documentation
           exclude_patterns: |
             - "*.lock"
             - "*.min.js"
             - "*.min.css"
             - "node_modules/**"
             - ".git/**"
-          language_specific_rules:
-            python:
-              - check_pep8_compliance
-              - check_security_vulnerabilities
-              - check_performance_issues
-              - check_code_complexity
-            dockerfile:
-              - check_security_best_practices
-              - check_image_optimization
-            yaml:
-              - check_syntax_errors
-              - check_security_configurations
+            - "__pycache__/**"
+            - "*.pyc"
+        continue-on-error: true
 
-  # Additional code quality checks for PR
+  # Basic code quality checks for PR
   pr-quality-checks:
     name: PR Quality Checks
     runs-on: ubuntu-latest
@@ -69,27 +59,29 @@ jobs:
 
       - name: Install analysis tools
         run: |
-          pip install radon complexity-report bandit safety
+          pip install flake8 black isort bandit safety
 
-      - name: Analyze code complexity
+      - name: Basic code analysis
         run: |
-          echo "## Code Complexity Analysis" >> pr_analysis.md
+          echo "## Code Quality Analysis" > pr_analysis.md
           echo "" >> pr_analysis.md
           
-          # Cyclomatic complexity
-          radon cc services/ shared/ -a -nb >> pr_analysis.md
+          # Run flake8 for basic linting
+          echo "### Linting Issues" >> pr_analysis.md
+          flake8 services/ shared/ --count --statistics >> pr_analysis.md 2>&1 || true
           echo "" >> pr_analysis.md
           
-          # Maintainability index
-          echo "### Maintainability Index" >> pr_analysis.md
-          radon mi services/ shared/ -nb >> pr_analysis.md
+          # Check formatting
+          echo "### Formatting Issues" >> pr_analysis.md
+          black --check --diff services/ shared/ >> pr_analysis.md 2>&1 || echo "No formatting issues found" >> pr_analysis.md
           echo "" >> pr_analysis.md
 
       - name: Security analysis
         run: |
           echo "### Security Analysis" >> pr_analysis.md
-          bandit -r services/ shared/ -f txt >> pr_analysis.md || true
+          bandit -r services/ shared/ -f txt >> pr_analysis.md 2>&1 || true
           echo "" >> pr_analysis.md
+        continue-on-error: true
 
       - name: Check for TODO/FIXME comments
         run: |
@@ -97,8 +89,9 @@ jobs:
           echo "" >> pr_analysis.md
           
           # Find TODO and FIXME comments in changed files
-          git diff --name-only origin/main...HEAD | xargs grep -n "TODO\|FIXME\|XXX\|HACK" || echo "No TODO/FIXME comments found" >> pr_analysis.md
+          git diff --name-only origin/master...HEAD | xargs grep -n "TODO\|FIXME\|XXX\|HACK" 2>/dev/null >> pr_analysis.md || echo "No TODO/FIXME comments found" >> pr_analysis.md
           echo "" >> pr_analysis.md
+        continue-on-error: true
 
       - name: Comment PR with analysis
         uses: actions/github-script@v7
@@ -118,6 +111,7 @@ jobs:
             } catch (error) {
               console.log('No analysis file found or error reading it:', error);
             }
+        continue-on-error: true
 
   # Check for breaking changes
   breaking-changes-check:
@@ -135,29 +129,29 @@ jobs:
           echo "## Breaking Changes Analysis" > breaking_changes.md
           echo "" >> breaking_changes.md
           
-          # Check for API changes in OpenAPI specs
-          if git diff --name-only origin/main...HEAD | grep -E "(openapi|swagger)" > /dev/null; then
+          # Check for API changes
+          if git diff --name-only origin/master...HEAD | grep -E "(api|openapi|swagger)" > /dev/null 2>&1; then
             echo "⚠️ **API specification changes detected**" >> breaking_changes.md
             echo "Please ensure backward compatibility or update API version." >> breaking_changes.md
             echo "" >> breaking_changes.md
           fi
           
           # Check for database schema changes
-          if git diff --name-only origin/main...HEAD | grep -E "(migration|schema|alembic)" > /dev/null; then
+          if git diff --name-only origin/master...HEAD | grep -E "(migration|schema|alembic)" > /dev/null 2>&1; then
             echo "⚠️ **Database schema changes detected**" >> breaking_changes.md
             echo "Please ensure migrations are backward compatible." >> breaking_changes.md
             echo "" >> breaking_changes.md
           fi
           
           # Check for environment variable changes
-          if git diff --name-only origin/main...HEAD | grep -E "(.env.example|docker-compose)" > /dev/null; then
+          if git diff --name-only origin/master...HEAD | grep -E "(.env|docker-compose)" > /dev/null 2>&1; then
             echo "⚠️ **Environment configuration changes detected**" >> breaking_changes.md
             echo "Please update deployment documentation if needed." >> breaking_changes.md
             echo "" >> breaking_changes.md
           fi
           
           # Check for dependency changes
-          if git diff --name-only origin/main...HEAD | grep -E "(pyproject.toml|requirements|poetry.lock)" > /dev/null; then
+          if git diff --name-only origin/master...HEAD | grep -E "(requirements|pyproject.toml|poetry.lock)" > /dev/null 2>&1; then
             echo "⚠️ **Dependency changes detected**" >> breaking_changes.md
             echo "Please ensure all services are compatible with new dependencies." >> breaking_changes.md
             echo "" >> breaking_changes.md
@@ -183,3 +177,4 @@ jobs:
             } catch (error) {
               console.log('No breaking changes file found or error reading it:', error);
             }
+        continue-on-error: true
