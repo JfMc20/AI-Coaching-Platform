@@ -60,8 +60,8 @@ app = FastAPI(
             "description": "Widget configuration"
         },
         {
-            "name": "conversations",
-            "description": "Conversation management"
+            "name": "programs",
+            "description": "Visual Program Builder management"
         },
         {
             "name": "health",
@@ -117,12 +117,13 @@ async def root():
 
 
 # Import routers
-from .routers import creators, knowledge, widgets
+from .routers import creators, knowledge, widgets, programs
 
 # Include routers
 app.include_router(creators.router)
 app.include_router(knowledge.router)
 app.include_router(widgets.router)
+app.include_router(programs.router)
 
 
 if __name__ == "__main__":

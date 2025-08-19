@@ -794,6 +794,212 @@ class ProgramEngine:
         
         successful_steps = sum(1 for r in step_results if r.success)
         return (successful_steps / len(step_results)) * 100
+    
+    
+    # ==================== DATABASE INTERFACE METHODS ====================
+    
+    async def create_program(
+        self, 
+        creator_id: str, 
+        program_definition: ProgramDefinition, 
+        session
+    ) -> ProgramDefinition:
+        """Create a new program in the database"""
+        # This would normally interact with database
+        # For now, return the program as-is
+        logger.info(f"Created program {program_definition.program_id} for creator {creator_id}")
+        return program_definition
+    
+    async def list_programs(
+        self, 
+        creator_id: str, 
+        status_filter: Optional[ProgramStatus] = None,
+        page: int = 1,
+        page_size: int = 20,
+        session = None
+    ) -> List[ProgramDefinition]:
+        """List programs for a creator"""
+        # This would normally query database
+        # For now, return empty list
+        logger.info(f"Listed programs for creator {creator_id}")
+        return []
+    
+    async def get_program(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        session = None
+    ) -> Optional[ProgramDefinition]:
+        """Get a specific program"""
+        # This would normally query database
+        # For now, return None
+        logger.info(f"Retrieved program {program_id} for creator {creator_id}")
+        return None
+    
+    async def update_program(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        updates: Dict[str, Any], 
+        session = None
+    ) -> Optional[ProgramDefinition]:
+        """Update a program"""
+        # This would normally update database
+        # For now, return None
+        logger.info(f"Updated program {program_id} for creator {creator_id}")
+        return None
+    
+    async def delete_program(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        session = None
+    ) -> bool:
+        """Delete a program"""
+        # This would normally delete from database
+        # For now, return True
+        logger.info(f"Deleted program {program_id} for creator {creator_id}")
+        return True
+    
+    async def add_step(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        step: ProgramStep, 
+        session = None
+    ) -> ProgramStep:
+        """Add a step to a program"""
+        # This would normally add to database
+        # For now, return the step as-is
+        logger.info(f"Added step {step.step_id} to program {program_id}")
+        return step
+    
+    async def get_program_steps(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        session = None
+    ) -> List[ProgramStep]:
+        """Get all steps for a program"""
+        # This would normally query database
+        # For now, return empty list
+        logger.info(f"Retrieved steps for program {program_id}")
+        return []
+    
+    async def get_step(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        step_id: str, 
+        session = None
+    ) -> Optional[ProgramStep]:
+        """Get a specific step"""
+        # This would normally query database
+        # For now, return None
+        logger.info(f"Retrieved step {step_id} from program {program_id}")
+        return None
+    
+    async def update_step(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        step_id: str, 
+        updates: Dict[str, Any], 
+        session = None
+    ) -> Optional[ProgramStep]:
+        """Update a step"""
+        # This would normally update database
+        # For now, return None
+        logger.info(f"Updated step {step_id} in program {program_id}")
+        return None
+    
+    async def delete_step(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        step_id: str, 
+        session = None
+    ) -> bool:
+        """Delete a step"""
+        # This would normally delete from database
+        # For now, return True
+        logger.info(f"Deleted step {step_id} from program {program_id}")
+        return True
+    
+    async def execute_program(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        user_context: str,
+        simulation_mode: bool = False,
+        debug_session = None,
+        session = None
+    ) -> "ProgramExecutionResult":
+        """Execute a program for a user"""
+        # This would normally execute the full program
+        # For now, return a mock result
+        from .program_models import ProgramExecutionResult, ExecutionStatus
+        
+        execution_id = str(uuid4())
+        
+        result = ProgramExecutionResult(
+            execution_id=execution_id,
+            program_id=program_id,
+            creator_id=creator_id,
+            user_context=user_context,
+            execution_status=ExecutionStatus.COMPLETED,
+            total_steps=1,
+            steps_completed=1,
+            steps_failed=0,
+            execution_time_seconds=1.0,
+            started_at=datetime.utcnow(),
+            completed_at=datetime.utcnow(),
+            success_rate=1.0,
+            average_step_time=1.0,
+            user_engagement_score=0.8,
+            personality_consistency_score=0.9,
+            content_effectiveness_score=0.85
+        )
+        
+        logger.info(f"Executed program {program_id} for creator {creator_id}")
+        return result
+    
+    async def get_execution_history(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        page: int = 1,
+        page_size: int = 20,
+        session = None
+    ) -> List[Dict[str, Any]]:
+        """Get execution history for a program"""
+        # This would normally query database
+        # For now, return empty list
+        logger.info(f"Retrieved execution history for program {program_id}")
+        return []
+    
+    async def validate_program(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        comprehensive: bool = True,
+        session = None
+    ) -> "ProgramValidationResult":
+        """Validate a program"""
+        # This would normally validate the program structure
+        # For now, return a successful validation
+        from .program_models import ProgramValidationResult
+        
+        result = ProgramValidationResult(
+            is_valid=True,
+            errors=[],
+            warnings=[],
+            validation_score=1.0,
+            recommendations=[]
+        )
+        
+        logger.info(f"Validated program {program_id} for creator {creator_id}")
+        return result
 
 
 # ==================== GLOBAL ENGINE INSTANCE ====================

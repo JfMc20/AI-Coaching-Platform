@@ -830,6 +830,117 @@ class ConditionEvaluator:
         
         extract_recursive(parsed)
         return list(functions)
+    
+    async def test_program_conditions(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        test_data: Dict[str, Any], 
+        session = None
+    ) -> Dict[str, Any]:
+        """Test program conditional logic with sample data"""
+        try:
+            from .program_models import ProgramDefinition, ExecutionContext
+            
+            # Create mock execution context with test data
+            context = ExecutionContext(
+                program_id=program_id,
+                user_id="test_user",
+                creator_id=creator_id,
+                execution_id="test_execution",
+                variables=test_data.get("variables", {}),
+                metrics=test_data.get("metrics", {})
+            )
+            
+            # Create condition context
+            condition_context = ConditionContext(
+                execution_context=context,
+                program=None,  # Would be loaded from database in real implementation
+                step_results=test_data.get("step_results", {}),
+                user_variables=test_data.get("user_variables", {}),
+                system_variables=test_data.get("system_variables", {}),
+                time_context={"now": datetime.utcnow()}
+            )
+            
+            test_results = []
+            
+            # Test various condition expressions from test data
+            test_expressions = test_data.get("test_expressions", [])
+            
+            for expr_data in test_expressions:
+                expression = expr_data.get("expression", "")
+                expected_result = expr_data.get("expected_result")
+                description = expr_data.get("description", "Test condition")
+                
+                try:
+                    # Parse and validate expression
+                    parsed = self.parser.parse_expression(expression)
+                    
+                    # Create condition config
+                    from .step_models import ConditionalConfig
+                    condition_config = ConditionalConfig(
+                        condition_expression=expression,
+                        cache_evaluation_result=False
+                    )
+                    
+                    # Evaluate condition
+                    result = await self.evaluate_condition(condition_config, condition_context)
+                    
+                    # Check if result matches expected
+                    test_passed = True
+                    if expected_result is not None:
+                        test_passed = result.result == expected_result
+                    
+                    test_results.append({
+                        "expression": expression,
+                        "description": description,
+                        "result": result.result,
+                        "expected_result": expected_result,
+                        "test_passed": test_passed,
+                        "execution_time_ms": result.execution_time_ms,
+                        "variables_used": result.variables_used,
+                        "functions_used": result.functions_used
+                    })
+                    
+                except Exception as e:
+                    test_results.append({
+                        "expression": expression,
+                        "description": description,
+                        "result": None,
+                        "expected_result": expected_result,
+                        "test_passed": False,
+                        "error": str(e)
+                    })
+            
+            # Calculate summary statistics
+            total_tests = len(test_results)
+            passed_tests = sum(1 for r in test_results if r.get("test_passed", False))
+            failed_tests = total_tests - passed_tests
+            
+            summary = {
+                "program_id": program_id,
+                "total_tests": total_tests,
+                "passed_tests": passed_tests,
+                "failed_tests": failed_tests,
+                "success_rate": (passed_tests / total_tests) if total_tests > 0 else 0,
+                "test_results": test_results
+            }
+            
+            logger.info(f"Condition testing completed for program {program_id}: {passed_tests}/{total_tests} passed")
+            
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Failed to test program conditions: {str(e)}")
+            return {
+                "program_id": program_id,
+                "total_tests": 0,
+                "passed_tests": 0,
+                "failed_tests": 0,
+                "success_rate": 0,
+                "error": str(e),
+                "test_results": []
+            }
 
 
 # ==================== CONDITION TEMPLATES ====================

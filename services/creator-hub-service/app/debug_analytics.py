@@ -884,6 +884,164 @@ class AnalyticsSystem:
         
         return list(set(recommendations))  # Remove duplicates
     
+    async def get_program_analytics(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        start_date: datetime, 
+        end_date: datetime,
+        analytics_type: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get program analytics data for a specific time period"""
+        
+        try:
+            analytics_data = {
+                "program_id": program_id,
+                "creator_id": creator_id,
+                "time_range": {
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat()
+                },
+                "generated_at": datetime.utcnow().isoformat(),
+                "analytics": {}
+            }
+            
+            # Get data for specific analytics type or all types
+            target_types = []
+            if analytics_type:
+                # Try to find matching analytics type
+                for atype in AnalyticsType:
+                    if atype.value == analytics_type:
+                        target_types = [atype]
+                        break
+            else:
+                target_types = list(AnalyticsType)
+            
+            for atype in target_types:
+                try:
+                    storage_key = f"{atype.value}_{program_id}"
+                    
+                    # Choose appropriate storage backend
+                    if atype in [AnalyticsType.PERFORMANCE]:
+                        backend = self.storage_backends[StorageType.TIMESERIES]
+                    elif atype in [AnalyticsType.EXECUTION, AnalyticsType.USER_JOURNEY]:
+                        backend = self.storage_backends[StorageType.RELATIONAL]
+                    else:
+                        backend = self.storage_backends[StorageType.DOCUMENT]
+                    
+                    # Retrieve data with time filtering
+                    filters = {
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "limit": 1000
+                    }
+                    
+                    data = await backend.retrieve(storage_key, filters)
+                    
+                    # Process and aggregate data
+                    if data:
+                        analytics_data["analytics"][atype.value] = {
+                            "total_records": len(data),
+                            "data_points": data[:10],  # First 10 records as sample
+                            "summary": await self._summarize_analytics_data(atype, data)
+                        }
+                    else:
+                        analytics_data["analytics"][atype.value] = {
+                            "total_records": 0,
+                            "data_points": [],
+                            "summary": {"message": "No data available for this time period"}
+                        }
+                        
+                except Exception as e:
+                    logger.error(f"Failed to retrieve {atype.value} analytics: {str(e)}")
+                    analytics_data["analytics"][atype.value] = {
+                        "error": str(e),
+                        "total_records": 0,
+                        "data_points": []
+                    }
+            
+            return analytics_data
+            
+        except Exception as e:
+            logger.error(f"Failed to get program analytics: {str(e)}")
+            return {
+                "program_id": program_id,
+                "creator_id": creator_id,
+                "error": str(e),
+                "analytics": {}
+            }
+    
+    async def _summarize_analytics_data(self, analytics_type: AnalyticsType, data: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Summarize analytics data based on type"""
+        
+        if not data:
+            return {"message": "No data to summarize"}
+        
+        summary = {}
+        
+        try:
+            if analytics_type == AnalyticsType.EXECUTION:
+                # Summarize execution data
+                total_executions = len(data)
+                successful = sum(1 for d in data if d.get("success_rate", 0) > 0.8)
+                avg_success_rate = sum(d.get("success_rate", 0) for d in data) / total_executions
+                avg_execution_time = sum(d.get("total_execution_time", 0) for d in data) / total_executions
+                
+                summary = {
+                    "total_executions": total_executions,
+                    "successful_executions": successful,
+                    "success_percentage": (successful / total_executions) * 100,
+                    "average_success_rate": avg_success_rate,
+                    "average_execution_time_seconds": avg_execution_time
+                }
+                
+            elif analytics_type == AnalyticsType.PERFORMANCE:
+                # Summarize performance data
+                avg_response_time = sum(d.get("average_response_time", 0) for d in data) / len(data)
+                max_response_time = max(d.get("max_response_time", 0) for d in data)
+                min_response_time = min(d.get("min_response_time", float('inf')) for d in data if d.get("min_response_time", float('inf')) != float('inf'))
+                
+                summary = {
+                    "average_response_time_ms": avg_response_time,
+                    "max_response_time_ms": max_response_time,
+                    "min_response_time_ms": min_response_time if min_response_time != float('inf') else 0,
+                    "total_performance_records": len(data)
+                }
+                
+            elif analytics_type == AnalyticsType.USER_JOURNEY:
+                # Summarize user journey data
+                avg_engagement = sum(d.get("average_engagement", 0) for d in data) / len(data)
+                total_users = len(set(d.get("user_id", "") for d in data if d.get("user_id")))
+                
+                summary = {
+                    "average_engagement_score": avg_engagement,
+                    "total_unique_users": total_users,
+                    "total_journey_records": len(data)
+                }
+                
+            elif analytics_type == AnalyticsType.PERSONALITY:
+                # Summarize personality data
+                avg_consistency = sum(d.get("personality_consistency_score", 0) for d in data) / len(data)
+                
+                summary = {
+                    "average_personality_consistency": avg_consistency,
+                    "total_personality_records": len(data)
+                }
+                
+            else:
+                summary = {
+                    "total_records": len(data),
+                    "data_type": analytics_type.value
+                }
+                
+        except Exception as e:
+            summary = {
+                "error": f"Failed to summarize {analytics_type.value} data: {str(e)}",
+                "total_records": len(data)
+            }
+        
+        return summary
+    
     def create_debug_session(self, program_id: str, user_id: str, debug_level: DebugLevel) -> str:
         """Create new debug session"""
         
@@ -952,11 +1110,134 @@ class AnalyticsSystem:
         
         logger.info(f"Finalized debug session: {session_id}")
         return trace
+    
+    async def start_debug_session(
+        self, 
+        creator_id: str, 
+        program_id: str, 
+        execution_type: str = "manual"
+    ) -> str:
+        """Start a new debug session"""
+        
+        session_id = f"debug_{creator_id}_{program_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        
+        trace = ExecutionTrace(
+            trace_id=session_id,
+            program_id=program_id,
+            user_id=creator_id,  # Using creator as user for debugging
+            started_at=datetime.utcnow(),
+            completed_at=None,
+            events=[],
+            metrics=[]
+        )
+        
+        self.debug_sessions[session_id] = trace
+        
+        # Log initial event
+        self.log_debug_event(
+            session_id=session_id,
+            event_type="session",
+            event_name="debug_session_started",
+            data={
+                "creator_id": creator_id,
+                "program_id": program_id,
+                "execution_type": execution_type
+            },
+            severity="info"
+        )
+        
+        logger.info(f"Started debug session: {session_id} for creator {creator_id}")
+        return session_id
+    
+    async def list_debug_sessions(
+        self, 
+        creator_id: str, 
+        program_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """List debug sessions for a creator"""
+        
+        sessions = []
+        
+        for session_id, trace in self.debug_sessions.items():
+            # Filter by creator and optionally by program
+            if trace.user_id == creator_id:
+                if program_id is None or trace.program_id == program_id:
+                    sessions.append({
+                        "session_id": session_id,
+                        "program_id": trace.program_id,
+                        "started_at": trace.started_at.isoformat() if trace.started_at else None,
+                        "completed_at": trace.completed_at.isoformat() if trace.completed_at else None,
+                        "status": "completed" if trace.completed_at else "active",
+                        "total_events": len(trace.events),
+                        "error_count": trace.error_count,
+                        "warning_count": trace.warning_count,
+                        "total_metrics": len(trace.metrics)
+                    })
+        
+        # Sort by start time (most recent first)
+        sessions.sort(key=lambda x: x["started_at"] if x["started_at"] else "", reverse=True)
+        
+        logger.info(f"Listed {len(sessions)} debug sessions for creator {creator_id}")
+        return sessions
+    
+    async def get_debug_session(
+        self, 
+        creator_id: str, 
+        session_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get detailed debug session information"""
+        
+        if session_id not in self.debug_sessions:
+            logger.warning(f"Debug session not found: {session_id}")
+            return None
+        
+        trace = self.debug_sessions[session_id]
+        
+        # Verify creator has access to this session
+        if trace.user_id != creator_id:
+            logger.warning(f"Creator {creator_id} attempted to access debug session {session_id} owned by {trace.user_id}")
+            return None
+        
+        session_details = {
+            "session_id": session_id,
+            "program_id": trace.program_id,
+            "creator_id": trace.user_id,
+            "started_at": trace.started_at.isoformat() if trace.started_at else None,
+            "completed_at": trace.completed_at.isoformat() if trace.completed_at else None,
+            "status": "completed" if trace.completed_at else "active",
+            "total_events": len(trace.events),
+            "error_count": trace.error_count,
+            "warning_count": trace.warning_count,
+            "total_metrics": len(trace.metrics),
+            "events": [
+                {
+                    "event_id": event.event_id,
+                    "timestamp": event.timestamp.isoformat() if event.timestamp else None,
+                    "event_type": event.event_type,
+                    "event_name": event.event_name,
+                    "data": event.data,
+                    "severity": event.severity
+                } for event in trace.events
+            ],
+            "metrics": [
+                {
+                    "metric_name": metric.metric_name,
+                    "metric_value": metric.metric_value,
+                    "timestamp": metric.timestamp.isoformat() if metric.timestamp else None,
+                    "unit": metric.unit,
+                    "tags": metric.tags
+                } for metric in trace.metrics
+            ]
+        }
+        
+        logger.info(f"Retrieved debug session details: {session_id}")
+        return session_details
 
 
 # ==================== GLOBAL ANALYTICS INSTANCE ====================
 
 _analytics_system: Optional[AnalyticsSystem] = None
+_debug_manager: Optional[DebugManager] = None
 
 
 def get_analytics_system() -> AnalyticsSystem:
@@ -965,6 +1246,12 @@ def get_analytics_system() -> AnalyticsSystem:
     if _analytics_system is None:
         _analytics_system = AnalyticsSystem()
     return _analytics_system
+
+
+def get_debug_manager() -> AnalyticsSystem:
+    """Get global debug manager instance (same as analytics system)"""
+    # Debug functionality is integrated into AnalyticsSystem
+    return get_analytics_system()
 
 
 # ==================== UTILITY FUNCTIONS ====================
